@@ -1,5 +1,5 @@
 from tkinter import Tk, Canvas
-from math import sin, cos
+from math import sin, cos, pi, sqrt
 import sys
 
 # constants
@@ -25,7 +25,6 @@ class Line():
             engine.get2d(self.x2, self.y2, self.z2)
         )
         return coords
-    
 class Engine():
     def __init__(self, canvas):
         self.roty = 0
@@ -48,20 +47,38 @@ class Engine():
         self.x = x
         self.y = y
         self.z = z
+    def pos_valid(self,x,y,z):
+        x -= self.x
+        y -= self.y
+        z -= self.z
+        
+        x,z = self.rot2d((x,z),self.roty)
+        return z > 0
     def object_is_valid(self,i):
         obj = self.objects[i]
-        return obj.z1 - self.z != 0 and obj.z2 - self.z != 0
+        v1 = self.pos_valid(obj.x1,obj.y1,obj.z1) > 0
+        v2 = self.pos_valid(obj.x2,obj.y2,obj.z2) > 0
+        
+        return v1 and v2
+    def rot2d(self,pos,rad):
+        x,y=pos
+        s,c = sin(rad),cos(rad)
+        return x*c-y*s, y*c+x*s
     def get2d(self,x,y,z):
         # implement rotation
-        #z = z*cos(self.roty) - x*sin(self.roty)
-        #x = z*sin(self.roty) + x*cos(self.roty)
+        #print(x,z)
         # factor in user player position
         x -= self.x
         y -= self.y
         z -= self.z
+        
+        x,z = self.rot2d((x,z),self.roty)
         # convert to 2d
-        outx = x/z
-        outy = y/z
+        #outx = x/z
+        #outy = y/z
+        f = 200/z
+        outx = x*f
+        outy = y*f
 
         # convert to 1 quadrant coords (the formula is for 4 quadrant coords)
         outx = int(outx + WIDTH/2)
@@ -88,7 +105,9 @@ class Game():
             87 : self.forward, # w
             83 : self.backward, # s
             65 : self.left, # a
-            68 : self.right # d
+            68 : self.right, # d
+            37 : self.rotl, # LEFT
+            39 : self.rotr # RIGHT
         }
         # methods to be run once a key has stopped being pressed
         self.key_up_mapping = {
@@ -104,20 +123,26 @@ class Game():
         # player init values
         self.xvelocity = 0
         self.zvelocity = 0
-        self.speed = 0.01
+        self.speed = 0.1
+        self.rot_speed = pi/(180*5)
         
         # init canvas
         self.canvas.pack()
         self.canvas.focus_set()
-
+    def rotl(self):
+        #print(self.engine.roty)
+        self.engine.roty -= self.rot_speed
+    def rotr(self):
+        #print(self.engine.roty)
+        self.engine.roty += self.rot_speed
     def forward(self):
-        self.zvelocity = self.speed*0.1
+        self.zvelocity = self.speed
     def backward(self):
-        self.zvelocity = -self.speed*0.1
+        self.zvelocity = -self.speed
     def right(self):
-        self.xvelocity = self.speed*10
+        self.xvelocity = self.speed
     def left(self):
-        self.xvelocity = -self.speed*10
+        self.xvelocity = -self.speed
     def kill_zvelocity(self):
         self.zvelocity = 0
     def kill_xvelocity(self):
@@ -150,7 +175,6 @@ class Game():
         self.engine.render_objects()
     def run(self):
         while True:
-            #print(self.keys_down)
             
             # update the keys that are down
             self.run_key_events()
@@ -161,16 +185,19 @@ class Game():
             # update the tkinter window (draw the buffer to the display)
             self.root.update()
         pass
+
 def setInitialValues():
     global g
     root = Tk()
     s = Canvas(root, width=WIDTH, height=HEIGHT, background="white")
     g = Game(root,s)
-    l = Line(10,0,5,100,40,5,"black")
+    #l = Line(0,0,5,0,100,5,"black")
+    #g.add_object(l)
+    l = Line(10,0,20,100,40,20,"black")
     g.add_object(l)
-    l = Line(100,40,5,200,0,5,"black")
+    l = Line(100,40,20,200,0,20,"black")
     g.add_object(l)
-    l = Line(200,0,5,10,0,5,"black")
+    l = Line(200,0,20,10,0,20,"black")
     g.add_object(l)
 def runGame():
     global g
