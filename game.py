@@ -1,4 +1,5 @@
-from tkinter import Tk, Canvas
+import tkinter
+import time
 from math import sin, cos, pi, sqrt
 import sys
 
@@ -98,6 +99,7 @@ class Game():
         self.canvas = canvas
         # 3d graphics engine
         self.engine = Engine(self.canvas)
+        self.stopped = False
 
         # key bindings / checking
         self.keys_down = []
@@ -106,8 +108,7 @@ class Game():
             83 : self.backward, # s
             65 : self.left, # a
             68 : self.right, # d
-            37 : self.rotl, # LEFT
-            39 : self.rotr # RIGHT
+            27: self.stop # ESC
         }
         # methods to be run once a key has stopped being pressed
         self.key_up_mapping = {
@@ -119,22 +120,30 @@ class Game():
         # event bindings
         self.canvas.bind("<KeyPress>",self.keydown)
         self.canvas.bind("<KeyRelease>",self.keyup)
+        self.canvas.bind("<Motion>",self.rot)
+        self.canvas.bind("<1>",self.test)
+        self.canvas.bind("<Double-1>",self.t2)
 
         # player init values
         self.xvelocity = 0
         self.zvelocity = 0
         self.speed = 0.1
-        self.rot_speed = pi/(180*5)
+
+        self.mousex = 0
+        self.mousey = 0
+        #self.rot_speed = pi/(180*20)
         
         # init canvas
         self.canvas.pack()
         self.canvas.focus_set()
-    def rotl(self):
-        #print(self.engine.roty)
-        self.engine.roty -= self.rot_speed
-    def rotr(self):
-        #print(self.engine.roty)
-        self.engine.roty += self.rot_speed
+    def stop(self):
+        self.root.destroy()
+        self.stopped = True
+        sys.exit(0)
+    def rot(self,event):
+        x,y = event.x, event.y
+        self.mousey += event.y
+        self.engine.roty = -x*(pi*2/WIDTH)
     def forward(self):
         self.zvelocity = self.speed
     def backward(self):
@@ -174,22 +183,38 @@ class Game():
         # re load all the objects
         self.engine.render_objects()
     def run(self):
-        while True:
-            
+        t = time.clock()
+        _id = self.canvas.create_text(10,10,text="",font="ansifixed",anchor="w")
+        while not self.stopped:
+            #print(self.keys_down)
             # update the keys that are down
             self.run_key_events()
             # move the player based
             self.update_pos()
             # update the tkinter buffer
             self.render()
+            t2 = time.clock()
+            fps = 1/(t2-t)
+            self.canvas.itemconfig(_id,text="fps: " + str(fps))
             # update the tkinter window (draw the buffer to the display)
             self.root.update()
+            t = time.clock()
         pass
 
 def setInitialValues():
-    global g
-    root = Tk()
-    s = Canvas(root, width=WIDTH, height=HEIGHT, background="white")
+    global g, WIDTH, HEIGHT
+    fullscreen = True
+    root = tkinter.Tk()
+    if fullscreen:
+        root.attributes('-fullscreen',True)
+        WIDTH = root.winfo_screenwidth()
+        HEIGHT = root.winfo_screenheight()
+    s = tkinter.Canvas(root,
+                       width=WIDTH,
+                       height=HEIGHT,
+                       background="white",
+                       cursor="none"
+    )
     g = Game(root,s)
     #l = Line(0,0,5,0,100,5,"black")
     #g.add_object(l)
@@ -203,4 +228,7 @@ def runGame():
     global g
     g.run()
 setInitialValues()
-runGame()
+try:
+    runGame()
+except SystemExit:
+    pass
