@@ -121,8 +121,6 @@ class Game():
         self.canvas.bind("<KeyPress>",self.keydown)
         self.canvas.bind("<KeyRelease>",self.keyup)
         self.canvas.bind("<Motion>",self.rot)
-        self.canvas.bind("<1>",self.test)
-        self.canvas.bind("<Double-1>",self.t2)
 
         # player init values
         self.xvelocity = 0
@@ -143,7 +141,7 @@ class Game():
     def rot(self,event):
         x,y = event.x, event.y
         self.mousey += event.y
-        self.engine.roty = -x*(pi*2/WIDTH)
+        self.engine.roty = x*(pi*2/WIDTH) - pi
     def forward(self):
         self.zvelocity = self.speed
     def backward(self):
@@ -157,8 +155,10 @@ class Game():
     def kill_xvelocity(self):
         self.xvelocity = 0
     def update_pos(self):
-        self.engine.z += self.zvelocity
-        self.engine.x += self.xvelocity
+        xv, zv = self.xvelocity, self.zvelocity
+        roty = self.engine.roty
+        self.engine.x += zv*sin(roty) + xv*cos(roty)
+        self.engine.z += zv*cos(roty) - xv*sin(roty)
         
     def add_object(self,obj):
         self.engine.add_object(obj)
@@ -185,6 +185,7 @@ class Game():
     def run(self):
         t = time.clock()
         _id = self.canvas.create_text(10,10,text="",font="ansifixed",anchor="w")
+        rottext = self.canvas.create_text(10,20,text="",font="ansifixed",anchor="w")
         while not self.stopped:
             #print(self.keys_down)
             # update the keys that are down
@@ -196,6 +197,7 @@ class Game():
             t2 = time.clock()
             fps = 1/(t2-t)
             self.canvas.itemconfig(_id,text="fps: " + str(fps))
+            self.canvas.itemconfig(rottext,text="roty: " + str(self.engine.roty))
             # update the tkinter window (draw the buffer to the display)
             self.root.update()
             t = time.clock()
