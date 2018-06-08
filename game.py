@@ -1,6 +1,7 @@
 import tkinter
 import time
 from math import sin, cos, pi, sqrt
+import win32api
 import sys
 
 # constants
@@ -132,6 +133,8 @@ class Game():
         self.yvelocity = 0
         self.speed = 0.1
 
+        # game stats
+        self.fps = 0
         self.mousex = 0
         self.mousey = 0
         #self.rot_speed = pi/(180*20)
@@ -140,25 +143,27 @@ class Game():
         self.canvas.pack()
         self.canvas.focus_set()
     def up(self):
-        self.yvelocity = self.speed
+        self.yvelocity = self.speed * (4000/self.fps)
     def down(self):
-        self.yvelocity = -self.speed
+        self.yvelocity = -self.speed * (4000/self.fps)
     def stop(self):
         self.root.destroy()
         self.stopped = True
         sys.exit(0)
     def rot(self,event):
+        win32api.SetCursorPos((int(WIDTH/2),int(HEIGHT/2)))
         x,y = event.x, event.y
-        self.mousey += event.y
-        self.engine.roty = x*(pi*2/WIDTH) - pi
+        self.mousex += event.x - WIDTH/2
+        self.mousey += event.y - HEIGHT/2
+        self.engine.roty = self.mousex*(pi*2/WIDTH) - pi
     def forward(self):
-        self.zvelocity = self.speed
+        self.zvelocity = self.speed * (4000/self.fps)
     def backward(self):
-        self.zvelocity = -self.speed
+        self.zvelocity = -self.speed * (4000/self.fps)
     def right(self):
-        self.xvelocity = self.speed
+        self.xvelocity = self.speed * (4000/self.fps)
     def left(self):
-        self.xvelocity = -self.speed
+        self.xvelocity = -self.speed * (4000/self.fps)
     def kill_zvelocity(self):
         self.zvelocity = 0
     def kill_xvelocity(self):
@@ -205,9 +210,10 @@ class Game():
             self.update_pos()
             # update the tkinter buffer
             self.render()
+            #time.sleep(0.03)
             t2 = time.clock()
-            fps = 1/(t2-t)
-            self.canvas.itemconfig(_id,text="fps: " + str(fps))
+            self.fps = 1/(t2-t)
+            self.canvas.itemconfig(_id,text="fps: " + str(self.fps))
             self.canvas.itemconfig(rottext,text="roty: " + str(self.engine.roty))
             # update the tkinter window (draw the buffer to the display)
             self.root.update()
