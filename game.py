@@ -108,6 +108,8 @@ class Game():
             83 : self.backward, # s
             65 : self.left, # a
             68 : self.right, # d
+            16 : self.down, # SHIFT
+            32 : self.up, # SPACE
             27: self.stop # ESC
         }
         # methods to be run once a key has stopped being pressed
@@ -115,7 +117,9 @@ class Game():
             87 : self.kill_zvelocity,
             83 : self.kill_zvelocity,
             65 : self.kill_xvelocity,
-            68 : self.kill_xvelocity
+            68 : self.kill_xvelocity,
+            16 : self.kill_yvelocity,
+            32 : self.kill_yvelocity
         }
         # event bindings
         self.canvas.bind("<KeyPress>",self.keydown)
@@ -125,6 +129,7 @@ class Game():
         # player init values
         self.xvelocity = 0
         self.zvelocity = 0
+        self.yvelocity = 0
         self.speed = 0.1
 
         self.mousex = 0
@@ -134,6 +139,10 @@ class Game():
         # init canvas
         self.canvas.pack()
         self.canvas.focus_set()
+    def up(self):
+        self.yvelocity = self.speed
+    def down(self):
+        self.yvelocity = -self.speed
     def stop(self):
         self.root.destroy()
         self.stopped = True
@@ -154,11 +163,14 @@ class Game():
         self.zvelocity = 0
     def kill_xvelocity(self):
         self.xvelocity = 0
+    def kill_yvelocity(self):
+        self.yvelocity = 0
     def update_pos(self):
-        xv, zv = self.xvelocity, self.zvelocity
+        xv, zv, yv = self.xvelocity, self.zvelocity, self.yvelocity
         roty = self.engine.roty
         self.engine.x += zv*sin(roty) + xv*cos(roty)
         self.engine.z += zv*cos(roty) - xv*sin(roty)
+        self.engine.y += yv
         
     def add_object(self,obj):
         self.engine.add_object(obj)
@@ -187,7 +199,6 @@ class Game():
         _id = self.canvas.create_text(10,10,text="",font="ansifixed",anchor="w")
         rottext = self.canvas.create_text(10,20,text="",font="ansifixed",anchor="w")
         while not self.stopped:
-            #print(self.keys_down)
             # update the keys that are down
             self.run_key_events()
             # move the player based
