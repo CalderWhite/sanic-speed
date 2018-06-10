@@ -1,6 +1,6 @@
 import tkinter
 import time
-from math import sin, cos, pi, sqrt
+import math
 import win32api
 import sys
 
@@ -25,9 +25,6 @@ class Line():
         # this will be initialized when the object is added to the game
         self.engine = None
 
-    def is_valid(self):
-        return True#not(v1 and v2)
-
     def get_2d_coords(self):
         coords = self.engine.project_line(
             (self.x1,self.y1,self.z1),
@@ -36,7 +33,11 @@ class Line():
         return coords
 
     def draw(self):
-        self.id = self.engine.canvas.create_line(self.get_2d_coords(), fill=self.color,width=1)
+        coords = self.get_2d_coords()
+        if coords != None:
+            self.id = self.engine.canvas.create_line(coords, fill=self.color,width=1)
+        else:
+            self.engine.dv = True
 
 class Triangle():
     def __init__(self,v1,v2,v3,color):
@@ -102,10 +103,11 @@ class Engine():
 
     def rot2d(self,pos,rad):
         x,y=pos
-        s,c = sin(rad),cos(rad)
+        s,c = math.sin(rad),math.cos(rad)
 
         return x*c-y*s, y*c+x*s
     def get_clip(self,v1,v2):
+        """Calder White's proprietary method for finding the intersection of a line and the z axis."""
         x1,y1,z1 = v1
         x2,y2,z2 = v2
         slopex = (x1 - x2)/(z1 - z2)
@@ -114,7 +116,7 @@ class Engine():
         slopey = (y1 - y2)/(z1 - z2)
         by = ((y1+y2)-slopey*(z1+z2))/2
 
-        #self.dv = (x1-x2,y1-y2,z1-z2)
+        # in the famous words of Mr. Schattman, graphics is just a series of optical illusions and cheating
         z = 0.001
 
         return (bx,by,z)
@@ -136,13 +138,19 @@ class Engine():
 
         # debugging
         try:
-            if v1[2] < 0:
+            # don't render a line that's out of screen
+            if v1[2] < 0 and v2[2] < 0:
+                return None
+            elif v1[2] < 0:
                 v1 = self.get_clip(v1,v2)
             elif v2[2] < 0:
                 v2 = self.get_clip(v2,v1)
         except ZeroDivisionError:
             pass
 
+        # incorperate z and field of view,
+        # then move points to originate from the center of the screen, since that's what the algorithm
+        # is designed to generate points for
         f1 = self.FOV/v1[2]
         p1 = (v1[0]*f1 + WIDTH/2,-v1[1]*f1 + HEIGHT/2)
 
@@ -154,8 +162,7 @@ class Engine():
     def render_objects(self):
         self.dv = False
         for i in range(len(self.objects)):
-            if self.objects[i].is_valid():
-                self.objects[i].draw()
+            self.objects[i].draw()
     
 class Game():
     def __init__(self,root,canvas):
@@ -165,6 +172,9 @@ class Game():
         # 3d graphics engine
         self.engine = Engine(self.canvas)
         self.stopped = False
+
+        # settings values
+        self.fps_speed_adjustment = 4000
 
         # key bindings / checking
         self.keys_down = []
@@ -178,6 +188,7 @@ class Game():
             27: self.stop, # ESC
             82: self.reset # r
         }
+
         # methods to be run once a key has stopped being pressed
         self.key_up_mapping = {
             87 : self.kill_zvelocity,
@@ -212,11 +223,17 @@ class Game():
         self.engine.roty = 0
         self.engine.rotz = 0
 
+    def get_adjusted_speed(self):
+        """Returns the speed adjusted to the frame rate, so if frames drop or spike, the in game speed remains the same."""
+        # for whatever reason, I've found that the relationship between speed and fps
+        # does not feel normal when it is linear, so I've played around and landed on this equation that feels natural
+        return self.speed * math.sqrt(self.fps_speed_adjustment/self.fps**1.1)
+
     def up(self):
-        self.yvelocity = self.speed * (4000/self.fps)
+        self.yvelocity = self.get_adjusted_speed()
 
     def down(self):
-        self.yvelocity = -self.speed * (4000/self.fps)
+        self.yvelocity = -self.get_adjusted_speed()
 
     def stop(self):
         self.root.destroy()
@@ -229,20 +246,20 @@ class Game():
         self.mousex += x - WIDTH/2
         self.mousey += y - HEIGHT/2
 
-        self.engine.rotz = self.mousex*(pi*2/WIDTH) 
-        self.engine.roty = -(self.mousey*(pi*2/HEIGHT))
+        self.engine.rotz = self.mousex*(math.pi*2/WIDTH) 
+        self.engine.roty = -(self.mousey*(math.pi*2/HEIGHT))
 
     def forward(self):
-        self.zvelocity = self.speed * (4000/self.fps)
+        self.zvelocity = self.get_adjusted_speed()
 
     def backward(self):
-        self.zvelocity = -self.speed * (4000/self.fps)
+        self.zvelocity = -self.get_adjusted_speed()
 
     def right(self):
-        self.xvelocity = self.speed * (4000/self.fps)
+        self.xvelocity = self.get_adjusted_speed()
 
     def left(self):
-        self.xvelocity = -self.speed * (4000/self.fps)
+        self.xvelocity = -self.get_adjusted_speed()
 
     def kill_zvelocity(self):
         self.zvelocity = 0
@@ -256,8 +273,8 @@ class Game():
     def update_pos(self):
         xv, zv, yv = self.xvelocity, self.zvelocity, self.yvelocity
         rotz = self.engine.rotz
-        self.engine.x += zv*sin(rotz) + xv*cos(rotz)
-        self.engine.z += zv*cos(rotz) - xv*sin(rotz)
+        self.engine.x += zv*math.sin(rotz) + xv*math.cos(rotz)
+        self.engine.z += zv*math.cos(rotz) - xv*math.sin(rotz)
         self.engine.y += yv
         
     def add_object(self,obj):
@@ -293,11 +310,12 @@ class Game():
         win32api.SetCursorPos((int(WIDTH/2),int(HEIGHT/2)))
 
         _id = self.canvas.create_text(10,10,text="",font="ansifixed",anchor="w")
-        rottext = self.canvas.create_text(10,20,text="",font="ansifixed",anchor="w")
-        rottext1 = self.canvas.create_text(10,30,text="",font="ansifixed",anchor="w")
-        out = self.canvas.create_text(10,40,text="",font="ansifixed",anchor="w")
-        out2 = self.canvas.create_text(10,50,text="",font="ansifixed",anchor="w")
-        keytext = self.canvas.create_text(10,60,text="",font="ansifixed",anchor="w")
+        aspeed = self.canvas.create_text(10,20,text="",font="ansifixed",anchor="w")
+        rottext = self.canvas.create_text(10,30,text="",font="ansifixed",anchor="w")
+        rottext1 = self.canvas.create_text(10,40,text="",font="ansifixed",anchor="w")
+        out = self.canvas.create_text(10,50,text="",font="ansifixed",anchor="w")
+        out2 = self.canvas.create_text(10,60,text="",font="ansifixed",anchor="w")
+        keytext = self.canvas.create_text(10,70,text="",font="ansifixed",anchor="w")
 
         self.engine.jiggy = None
         while not self.stopped:
@@ -310,7 +328,8 @@ class Game():
             #time.sleep(0.03)
             t2 = time.clock()
             self.fps = 1/(t2-t)
-            self.canvas.itemconfig(_id,text="fps: " + str(self.fps))
+            self.canvas.itemconfig(_id,text="fps: " + str(int(self.fps)))
+            self.canvas.itemconfig(aspeed,text="adjusted speed: " + str(self.get_adjusted_speed()))
             self.canvas.itemconfig(rottext,text="rotz: " + str(self.engine.rotz))
             self.canvas.itemconfig(rottext1,text="roty: " + str(self.engine.roty))
             self.canvas.itemconfig(out,text="Out of Bounds: " + str(self.engine.dv))
