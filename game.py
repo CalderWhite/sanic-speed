@@ -26,15 +26,12 @@ class Line():
         self.engine = None
 
     def is_valid(self):
-        v1 = self.engine.pos_valid(self.x1,self.y1,self.z1)
-        v2 = self.engine.pos_valid(self.x2,self.y2,self.z2)
-        
-        return not(v1 and v2)
+        return True#not(v1 and v2)
 
     def get_2d_coords(self):
-        coords = (
-            self.engine.get2d(self.x1, self.y1, self.z1,shit=True),
-            self.engine.get2d(self.x2, self.y2, self.z2)
+        coords = self.engine.project_line(
+            (self.x1,self.y1,self.z1),
+            (self.x2,self.y2,self.z2)
         )
         return coords
 
@@ -103,49 +100,56 @@ class Engine():
         self.y = y
         self.z = z
 
-    def pos_valid(self,x,y,z):
-        x -= self.x
-        y -= self.y
-        z -= self.z
-        
-        x,z = self.rot2d((x,z),self.rotz)
-        y,z = self.rot2d((y,z),self.roty)
-        return z > 0
-
     def rot2d(self,pos,rad):
         x,y=pos
         s,c = sin(rad),cos(rad)
-        return x*c-y*s, y*c+x*s
 
-    def get2d(self,x,y,z,shit=False):
-        # implement rotation
-        #print(x,z)
-        # factor in user player position
+        return x*c-y*s, y*c+x*s
+    def get_clip(self,v1,v2):
+        x1,y1,z1 = v1
+        x2,y2,z2 = v2
+        slopex = (x1 - x2)/(z1 - z2)
+        bx = ((x1+x2)-slopex*(z1+z2))/2
+
+        slopey = (y1 - y2)/(z1 - z2)
+        by = ((y1+y2)-slopey*(z1+z2))/2
+
+        #self.dv = (x1-x2,y1-y2,z1-z2)
+        z = 0.001
+
+        return (bx,by,z)
+    def modify_point(self,v):
+        x,y,z = v
+        # move the point basd on the camera's position
         x -= self.x
         y -= self.y
         z -= self.z
-        
+        # rotate on both axis
         x,z = self.rot2d((x,z),self.rotz)
         y,z = self.rot2d((y,z),self.roty)
-        # convert to 2d
-        #outx = x/z
-        #outy = y/z
-        #if z < 0:
-        #    z += 20
-        if z > 0:
-            f = self.FOV/z
-        else:
-            f = self.FOV/(1/abs(z))
-        outx = x*f
-        outy = y*f
 
-        # convert to 1 quadrant coords (the formula is for 4 quadrant coords)
-        outx = int(outx + WIDTH/2)
-        outy = int(-outy + HEIGHT/2)
-        if shit:
-            self.jiggy = f
-        
-        return (outx,outy)
+        return (x,y,z)
+    def project_line(self,v1,v2):
+        """Project a 3d line onto a 2d plane."""
+        v1 = self.modify_point(v1)
+        v2 = self.modify_point(v2)
+
+        # debugging
+        try:
+            if v1[2] < 0:
+                v1 = self.get_clip(v1,v2)
+            elif v2[2] < 0:
+                v2 = self.get_clip(v2,v1)
+        except ZeroDivisionError:
+            pass
+
+        f1 = self.FOV/v1[2]
+        p1 = (v1[0]*f1 + WIDTH/2,-v1[1]*f1 + HEIGHT/2)
+
+        f2 = self.FOV/v2[2]
+        p2 = (v2[0]*f2 + WIDTH/2,-v2[1]*f2 + HEIGHT/2)
+
+        return (p1,p2)
 
     def render_objects(self):
         self.dv = False
@@ -171,7 +175,8 @@ class Game():
             68 : self.right, # d
             16 : self.down, # SHIFT
             32 : self.up, # SPACE
-            27: self.stop # ESC
+            27: self.stop, # ESC
+            82: self.reset # r
         }
         # methods to be run once a key has stopped being pressed
         self.key_up_mapping = {
@@ -191,7 +196,7 @@ class Game():
         self.xvelocity = 0
         self.zvelocity = 0
         self.yvelocity = 0
-        self.speed = 1
+        self.speed = 0.25
 
         # game stats
         self.fps = 0
@@ -202,6 +207,10 @@ class Game():
         # init canvas
         self.canvas.pack()
         self.canvas.focus_set()
+
+    def reset(self):
+        self.engine.roty = 0
+        self.engine.rotz = 0
 
     def up(self):
         self.yvelocity = self.speed * (4000/self.fps)
@@ -217,10 +226,11 @@ class Game():
     def rot(self,event):
         win32api.SetCursorPos((int(WIDTH/2),int(HEIGHT/2)))
         x,y = event.x, event.y
-        self.mousex += event.x - WIDTH/2
-        self.mousey += event.y - HEIGHT/2
-        self.engine.rotz = self.mousex*(pi*2/WIDTH) - pi
-        self.engine.roty = -(self.mousey*(pi*2/HEIGHT) - pi)
+        self.mousex += x - WIDTH/2
+        self.mousey += y - HEIGHT/2
+
+        self.engine.rotz = self.mousex*(pi*2/WIDTH) 
+        self.engine.roty = -(self.mousey*(pi*2/HEIGHT))
 
     def forward(self):
         self.zvelocity = self.speed * (4000/self.fps)
@@ -280,12 +290,16 @@ class Game():
 
     def run(self):
         t = time.clock()
+        win32api.SetCursorPos((int(WIDTH/2),int(HEIGHT/2)))
+
         _id = self.canvas.create_text(10,10,text="",font="ansifixed",anchor="w")
         rottext = self.canvas.create_text(10,20,text="",font="ansifixed",anchor="w")
         rottext1 = self.canvas.create_text(10,30,text="",font="ansifixed",anchor="w")
         out = self.canvas.create_text(10,40,text="",font="ansifixed",anchor="w")
         out2 = self.canvas.create_text(10,50,text="",font="ansifixed",anchor="w")
-        self.engine.jiggy = 0
+        keytext = self.canvas.create_text(10,60,text="",font="ansifixed",anchor="w")
+
+        self.engine.jiggy = None
         while not self.stopped:
             # update the keys that are down
             self.run_key_events()
@@ -301,6 +315,8 @@ class Game():
             self.canvas.itemconfig(rottext1,text="roty: " + str(self.engine.roty))
             self.canvas.itemconfig(out,text="Out of Bounds: " + str(self.engine.dv))
             self.canvas.itemconfig(out2,text="f: " + str(self.engine.jiggy))
+            self.canvas.itemconfig(keytext,text="keys: " + str(self.keys_down))
+
             # update the tkinter window (draw the buffer to the display)
             self.root.update()
             t = time.clock()
@@ -320,10 +336,18 @@ def setInitialValues():
                        cursor="none"
     )
     g = Game(root,s)
-    #l = Line(0,0,5,30,10,5,"black")
-    #g.add_object(l)
-    t = Triangle((10,0,20),(100,40,40),(200,0,20),"black")
+    l = Line(0,0,5,30,10,5,"black")
+    g.add_object(l)
+    """
+    t = Triangle((10,0,20),(100,40,105),(200,0,20),"black")
     g.add_object(t)
+    t = Triangle((10,0,210),(100,40,105),(200,0,210),"red")
+    g.add_object(t)
+    t = Triangle((10,0,20),(100,40,105),(10,0,210),"blue")
+    g.add_object(t)
+    t = Triangle((200,0,20),(100,40,105),(200,0,210),"yellow")
+    g.add_object(t)
+    """
 def runGame():
     global g
     g.run()
