@@ -9,16 +9,11 @@ WIDTH = 600
 HEIGHT = 600
 
 class Line():
-    def __init__(self,x1,y1,z1,x2,y2,z2, color):
+    def __init__(self, v1, v2, color):
         self.color = color
         
-        self.x1 = x1
-        self.y1 = y1
-        self.z1 = z1
-
-        self.x2 = x2
-        self.y2 = y2
-        self.z2 = z2
+        self.v1 = v1
+        self.v2 = v2
 
         self.id = None
         
@@ -27,47 +22,49 @@ class Line():
 
     def get_2d_coords(self):
         coords = self.engine.project_line(
-            (self.x1,self.y1,self.z1),
-            (self.x2,self.y2,self.z2)
+            self.v1,
+            self.v2
         )
         return coords
 
     def draw(self):
         coords = self.get_2d_coords()
         if coords != None:
-            self.id = self.engine.canvas.create_line(coords, fill=self.color,width=1)
-        else:
-            self.engine.dv = True
+            self.id = self.engine.canvas.create_line(coords, fill=self.color,width=5)
 
-class Triangle():
-    def __init__(self,v1,v2,v3,color):
+class Polygon():
+    def __init__(self,verticies,color):
         self.color = color
 
-        self.v1 = v1
-        self.v2 = v2
-        self.v3 = v3
+        self.verticies = verticies
 
         self.id = None
         # this will be initialized when the object is added to the game
         self.engine = None
 
-    def is_valid(self):
-        v1 = self.engine.pos_valid(*self.v1)
-        v2 = self.engine.pos_valid(*self.v2)
-        v3 = self.engine.pos_valid(*self.v3)
-        self.engine.dv = (v1,v2,v3)
-        return v1 or v2 or v3
-
     def get_2d_coords(self):
-        coords = (
-            self.engine.get2d(*self.v1),
-            self.engine.get2d(*self.v2),
-            self.engine.get2d(*self.v3)
-        )
+        """Returns a list of coordinates that are projected onto the screen. Given that (0,0) is the top left."""
+
+        coords = []
+        for i in range(len(self.verticies)):
+            projected = self.engine.project_line(
+                self.verticies[i],
+                self.verticies[(i+1) % len(self.verticies)],
+                polygon=True
+            )
+            if projected != None:
+                coords += projected
+        if coords == []:
+            return None
+
         return coords
 
     def draw(self):
-        self.id = self.engine.canvas.create_polygon(self.get_2d_coords(),fill=self.color,width=0)
+        """Render the object to the tkinter screen."""
+        coords = self.get_2d_coords()
+        if coords == None:
+            return
+        self.id = self.engine.canvas.create_polygon(coords,fill=self.color,width=1)
 
 class Engine():
     def __init__(self, canvas):
@@ -92,8 +89,13 @@ class Engine():
         # clear the screen
         # TODO: this isn't really efficient. It's better to configure them / change coords
         for i in range(len(self.objects)):
-            self.canvas.delete(self.objects[i].id)
-            self.objects[i].id = None
+            if type(self.objects[i].id) == list:
+                for j in self.objects[i].id:
+                    self.canvas.delete(j)
+                self.objects[i].id = []
+            else:
+                self.canvas.delete(self.objects[i].id)
+                self.objects[i].id = None
 
     def set_coords(self,x,y,z):
         # update the coordinates of the player
@@ -106,7 +108,7 @@ class Engine():
         s,c = math.sin(rad),math.cos(rad)
 
         return x*c-y*s, y*c+x*s
-    def get_clip(self,v1,v2):
+    def clip_3d_line(self,v1,v2):
         """Calder White's proprietary method for finding the intersection of a line and the z axis."""
         x1,y1,z1 = v1
         x2,y2,z2 = v2
@@ -120,6 +122,30 @@ class Engine():
         z = 0.001
 
         return (bx,by,z)
+    def clip_2d_line(self,v1,v2):
+        x1,y1 = v1
+        x2,y2 = v2
+
+        slope = (y1 - y2)/(x1 - x2)
+        b = (y1+y2-slope*(x1+x2))/2
+
+        constant = 5000
+        if y1 > HEIGHT:
+            y1 = HEIGHT + constant
+            x1 = (y1-b)/slope
+        if y1 < 0:
+            y1 = -constant
+            x1 = (y1-b)/slope
+
+        if x1 > WIDTH:
+            x1 = WIDTH + constant
+            y1 = slope*x1 + b
+        if x1 < 0:
+            x1 = -constant
+            y1 = slope*x1 + b
+
+        return ((x1,y1),(x2,y2))
+
     def modify_point(self,v):
         x,y,z = v
         # move the point basd on the camera's position
@@ -131,7 +157,7 @@ class Engine():
         y,z = self.rot2d((y,z),self.roty)
 
         return (x,y,z)
-    def project_line(self,v1,v2):
+    def project_line(self,v1,v2,polygon=False):
         """Project a 3d line onto a 2d plane."""
         v1 = self.modify_point(v1)
         v2 = self.modify_point(v2)
@@ -142,12 +168,11 @@ class Engine():
             if v1[2] < 0 and v2[2] < 0:
                 return None
             elif v1[2] < 0:
-                v1 = self.get_clip(v1,v2)
+                v1 = self.clip_3d_line(v1,v2)
             elif v2[2] < 0:
-                v2 = self.get_clip(v2,v1)
+                v2 = self.clip_3d_line(v2,v1)
         except ZeroDivisionError:
             pass
-
         # incorperate z and field of view,
         # then move points to originate from the center of the screen, since that's what the algorithm
         # is designed to generate points for
@@ -156,6 +181,12 @@ class Engine():
 
         f2 = self.FOV/v2[2]
         p2 = (v2[0]*f2 + WIDTH/2,-v2[1]*f2 + HEIGHT/2)
+
+        # if the line is for a polygon, clip the 2d version as well, since there is a tkinter error with very large 
+        # numbers that need to be clipped. (So we do it our selves)
+        if polygon:
+            p1,p2 = self.clip_2d_line(p1,p2)
+            p2,p1 = self.clip_2d_line(p2,p1)
 
         return (p1,p2)
 
@@ -207,13 +238,12 @@ class Game():
         self.xvelocity = 0
         self.zvelocity = 0
         self.yvelocity = 0
-        self.speed = 0.25
+        self.speed = 0.5
 
         # game stats
         self.fps = 0
         self.mousex = 0
         self.mousey = 0
-        #self.rot_speed = pi/(180*20)
         
         # init canvas
         self.canvas.pack()
@@ -227,7 +257,7 @@ class Game():
         """Returns the speed adjusted to the frame rate, so if frames drop or spike, the in game speed remains the same."""
         # for whatever reason, I've found that the relationship between speed and fps
         # does not feel normal when it is linear, so I've played around and landed on this equation that feels natural
-        return self.speed * math.sqrt(self.fps_speed_adjustment/self.fps**1.1)
+        return self.speed * math.sqrt(self.fps_speed_adjustment/self.fps**1.05)
 
     def up(self):
         self.yvelocity = self.get_adjusted_speed()
@@ -271,6 +301,10 @@ class Game():
         self.yvelocity = 0
 
     def update_pos(self):
+        """
+        Update the camera's position based velocity, 
+        as well as incorperating the direction to make xz axis movement feel natural.
+        """
         xv, zv, yv = self.xvelocity, self.zvelocity, self.yvelocity
         rotz = self.engine.rotz
         self.engine.x += zv*math.sin(rotz) + xv*math.cos(rotz)
@@ -310,14 +344,10 @@ class Game():
         win32api.SetCursorPos((int(WIDTH/2),int(HEIGHT/2)))
 
         _id = self.canvas.create_text(10,10,text="",font="ansifixed",anchor="w")
-        aspeed = self.canvas.create_text(10,20,text="",font="ansifixed",anchor="w")
-        rottext = self.canvas.create_text(10,30,text="",font="ansifixed",anchor="w")
-        rottext1 = self.canvas.create_text(10,40,text="",font="ansifixed",anchor="w")
-        out = self.canvas.create_text(10,50,text="",font="ansifixed",anchor="w")
-        out2 = self.canvas.create_text(10,60,text="",font="ansifixed",anchor="w")
-        keytext = self.canvas.create_text(10,70,text="",font="ansifixed",anchor="w")
+        rottext = self.canvas.create_text(10,20,text="",font="ansifixed",anchor="w")
+        rottext1 = self.canvas.create_text(10,30,text="",font="ansifixed",anchor="w")
+        out = self.canvas.create_text(10,40,text="",font="ansifixed",anchor="w")
 
-        self.engine.jiggy = None
         while not self.stopped:
             # update the keys that are down
             self.run_key_events()
@@ -325,20 +355,21 @@ class Game():
             self.update_pos()
             # update the tkinter buffer
             self.render()
-            #time.sleep(0.03)
+
+            # updating fps
             t2 = time.clock()
             self.fps = 1/(t2-t)
+
+            # debugging messages
             self.canvas.itemconfig(_id,text="fps: " + str(int(self.fps)))
-            self.canvas.itemconfig(aspeed,text="adjusted speed: " + str(self.get_adjusted_speed()))
             self.canvas.itemconfig(rottext,text="rotz: " + str(self.engine.rotz))
             self.canvas.itemconfig(rottext1,text="roty: " + str(self.engine.roty))
-            self.canvas.itemconfig(out,text="Out of Bounds: " + str(self.engine.dv))
-            self.canvas.itemconfig(out2,text="f: " + str(self.engine.jiggy))
-            self.canvas.itemconfig(keytext,text="keys: " + str(self.keys_down))
+            self.canvas.itemconfig(out,text="out of bounds: " + str(self.engine.dv))
 
+            # keep track of time for fps
+            t = time.clock()
             # update the tkinter window (draw the buffer to the display)
             self.root.update()
-            t = time.clock()
 
 def setInitialValues():
     global g, WIDTH, HEIGHT
@@ -355,21 +386,15 @@ def setInitialValues():
                        cursor="none"
     )
     g = Game(root,s)
-    l = Line(0,0,5,30,10,5,"black")
-    g.add_object(l)
-    """
-    t = Triangle((10,0,20),(100,40,105),(200,0,20),"black")
+    t = Polygon(((10,0,20),(100,40,105),(200,0,20)),"red")
     g.add_object(t)
-    t = Triangle((10,0,210),(100,40,105),(200,0,210),"red")
+    t = Polygon(((10,0,20),(100,40,105),(10,0,200)),"blue")
     g.add_object(t)
-    t = Triangle((10,0,20),(100,40,105),(10,0,210),"blue")
-    g.add_object(t)
-    t = Triangle((200,0,20),(100,40,105),(200,0,210),"yellow")
-    g.add_object(t)
-    """
+
 def runGame():
     global g
     g.run()
+
 setInitialValues()
 try:
     runGame()
