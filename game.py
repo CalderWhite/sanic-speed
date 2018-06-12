@@ -3,6 +3,7 @@ import time
 import math
 import win32api
 import sys
+import bisect
 
 # constants
 WIDTH = 600
@@ -15,22 +16,30 @@ class Line():
         self.v1 = v1
         self.v2 = v2
 
+        self.coords_cache = []
+
         self.id = None
         
         # this will be initialized when the object is added to the game
         self.engine = None
 
+    def update_pos(self):
+        self.coords_cache = []
+        self.coords_cache += [
+            self.engine.modify_point(self.v1),
+            self.engine.modify_point(self.v2)
+        ]
     def get_2d_coords(self):
         coords = self.engine.project_line(
-            self.v1,
-            self.v2
+            self.coords_cache[0],
+            self.coords_cache[1]
         )
         return coords
 
     def draw(self):
         coords = self.get_2d_coords()
         if coords != None:
-            self.id = self.engine.canvas.create_line(coords, fill=self.color,width=5)
+            self.id = self.engine.canvas.create_line(coords, fill=self.color,width=1)
 
 class Polygon():
     def __init__(self,verticies,color):
@@ -38,9 +47,19 @@ class Polygon():
 
         self.verticies = verticies
 
+        self.coords_cache = []
+
         self.id = None
         # this will be initialized when the object is added to the game
         self.engine = None
+
+    def update_pos(self):
+        """Update the coordinate cache based on the engine's camera position/rotation."""
+        self.coords_cache = []
+        for i in self.verticies:
+            self.coords_cache.append(
+                self.engine.modify_point(i)
+            )
 
     def get_2d_coords(self):
         """Returns a list of coordinates that are projected onto the screen. Given that (0,0) is the top left."""
@@ -48,8 +67,8 @@ class Polygon():
         coords = []
         for i in range(len(self.verticies)):
             projected = self.engine.project_line(
-                self.verticies[i],
-                self.verticies[(i+1) % len(self.verticies)],
+                self.coords_cache[i],
+                self.coords_cache[(i+1) % len(self.coords_cache)],
                 polygon=True
             )
             if projected != None:
@@ -62,12 +81,12 @@ class Polygon():
     def draw(self):
         """Render the object to the tkinter screen."""
         coords = self.get_2d_coords()
-        if coords == None:
-            return
-        self.id = self.engine.canvas.create_polygon(coords,fill=self.color,width=1)
+        if coords != None:
+            self.id = self.engine.canvas.create_polygon(coords,fill=self.color,width=1)
 
 class Engine():
     def __init__(self, canvas):
+
         # camera rotation
         self.rotz = 0
         self.roty = 0
@@ -78,6 +97,9 @@ class Engine():
 
         # Field of View
         self.FOV = 400
+
+        # the farthest a line/polygon can be rendered outside of the tkinter window before the engine begins clipping it
+        self.SCREEN_CLIP_MAX = 5000
 
         self.canvas = canvas
         self.objects = []
@@ -98,7 +120,7 @@ class Engine():
                 self.objects[i].id = None
 
     def set_coords(self,x,y,z):
-        # update the coordinates of the player
+        # update the coordinates of the camera
         self.x = x
         self.y = y
         self.z = z
@@ -123,13 +145,14 @@ class Engine():
 
         return (bx,by,z)
     def clip_2d_line(self,v1,v2):
+        """Clips a 2d line to a built in max and min for x and y."""
         x1,y1 = v1
         x2,y2 = v2
 
         slope = (y1 - y2)/(x1 - x2)
         b = (y1+y2-slope*(x1+x2))/2
 
-        constant = 5000
+        constant = self.SCREEN_CLIP_MAX
         if y1 > HEIGHT:
             y1 = HEIGHT + constant
             x1 = (y1-b)/slope
@@ -147,6 +170,9 @@ class Engine():
         return ((x1,y1),(x2,y2))
 
     def modify_point(self,v):
+        """
+        Adjusts a vertex's position based on the camera's position and rotation.
+        """
         x,y,z = v
         # move the point basd on the camera's position
         x -= self.x
@@ -158,9 +184,10 @@ class Engine():
 
         return (x,y,z)
     def project_line(self,v1,v2,polygon=False):
-        """Project a 3d line onto a 2d plane."""
-        v1 = self.modify_point(v1)
-        v2 = self.modify_point(v2)
+        """
+        Project a 3d line onto a 2d plane and z axis clipping.
+        Also clips to a built in max/min for the 2d coordinates to compensate for a tkinter create_polygon bug.
+        """
 
         # debugging
         try:
@@ -191,9 +218,29 @@ class Engine():
         return (p1,p2)
 
     def render_objects(self):
-        self.dv = False
-        for i in range(len(self.objects)):
-            self.objects[i].draw()
+        """Sorts faces and then draws the sorted faces onto the tkinter canvas."""
+        # sort the faces first
+        sorted_faces = []
+        sorted_z_values = []
+        for face in self.objects:
+            # modify the coords based on the camera
+            face.update_pos()
+
+            # get the highest z value of the face
+            z = face.coords_cache[0][2]
+            for i in face.coords_cache:
+                if i[2] > z:
+                    z = i[2]
+
+            # find the index that it should be inserted at in the sorted list of z values
+            i = bisect.bisect_left(sorted_z_values,z)
+
+            # insert it 
+            sorted_z_values.insert(i,z)
+            sorted_faces.insert(i,face)
+        # then render them
+        for i in range(len(sorted_faces)-1,-1,-1):
+            sorted_faces[i].draw()
     
 class Game():
     def __init__(self,root,canvas):
@@ -362,9 +409,8 @@ class Game():
 
             # debugging messages
             self.canvas.itemconfig(_id,text="fps: " + str(int(self.fps)))
-            self.canvas.itemconfig(rottext,text="rotz: " + str(self.engine.rotz))
-            self.canvas.itemconfig(rottext1,text="roty: " + str(self.engine.roty))
-            self.canvas.itemconfig(out,text="out of bounds: " + str(self.engine.dv))
+            self.canvas.itemconfig(rottext,text="rotz: " + str(math.degrees(self.engine.rotz)))
+            self.canvas.itemconfig(rottext1,text="roty: " + str(math.degrees(self.engine.roty)))
 
             # keep track of time for fps
             t = time.clock()
@@ -386,6 +432,8 @@ def setInitialValues():
                        cursor="none"
     )
     g = Game(root,s)
+    t = Line((10,0,300),(10,20,300),"orange")
+    g.add_object(t)
     t = Polygon(((10,0,20),(100,40,105),(200,0,20)),"red")
     g.add_object(t)
     t = Polygon(((10,0,20),(100,40,105),(10,0,200)),"blue")
@@ -400,3 +448,4 @@ try:
     runGame()
 except SystemExit:
     pass
+ 
