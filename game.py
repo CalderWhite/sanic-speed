@@ -155,10 +155,14 @@ class Engine():
         constant = self.SCREEN_CLIP_MAX
         if y1 > HEIGHT:
             y1 = HEIGHT + constant
-            x1 = (y1-b)/slope
+            if slope != 0:
+                # if the slope is 0, no modification to x is required
+                x1 = (y1-b)/slope
         if y1 < 0:
             y1 = -constant
-            x1 = (y1-b)/slope
+            # if the slope is 0, no modification to x is required
+            if slope != 0:
+                x1 = (y1-b)/slope
 
         if x1 > WIDTH:
             x1 = WIDTH + constant
@@ -285,7 +289,7 @@ class Game():
         self.xvelocity = 0
         self.zvelocity = 0
         self.yvelocity = 0
-        self.speed = 0.5
+        self.speed = 0.1
 
         # game stats
         self.fps = 0
@@ -390,10 +394,7 @@ class Game():
         t = time.clock()
         win32api.SetCursorPos((int(WIDTH/2),int(HEIGHT/2)))
 
-        _id = self.canvas.create_text(10,10,text="",font="ansifixed",anchor="w")
-        rottext = self.canvas.create_text(10,20,text="",font="ansifixed",anchor="w")
-        rottext1 = self.canvas.create_text(10,30,text="",font="ansifixed",anchor="w")
-        out = self.canvas.create_text(10,40,text="",font="ansifixed",anchor="w")
+        fps_text = self.canvas.create_text(10,10,text="",font="ansifixed",anchor="w",fill="white")
 
         while not self.stopped:
             # update the keys that are down
@@ -408,10 +409,7 @@ class Game():
             self.fps = 1/(t2-t)
 
             # debugging messages
-            self.canvas.itemconfig(_id,text="fps: " + str(int(self.fps)))
-            self.canvas.itemconfig(rottext,text="rotz: " + str(math.degrees(self.engine.rotz)))
-            self.canvas.itemconfig(rottext1,text="roty: " + str(math.degrees(self.engine.roty)))
-
+            self.canvas.itemconfig(fps_text,text="fps: " + str(int(self.fps)))
             # keep track of time for fps
             t = time.clock()
             # update the tkinter window (draw the buffer to the display)
@@ -420,18 +418,26 @@ class Game():
 def setInitialValues():
     global g, WIDTH, HEIGHT
     fullscreen = True
+
+    # create the tkinter window
     root = tkinter.Tk()
     if fullscreen:
         root.attributes('-fullscreen',True)
         WIDTH = root.winfo_screenwidth()
         HEIGHT = root.winfo_screenheight()
+    # create the tkinter canvas based on some settings
     s = tkinter.Canvas(root,
                        width=WIDTH,
                        height=HEIGHT,
-                       background="white",
-                       cursor="none"
+                       background="black",
+                       cursor="none",
+                       bd=0,
+                       highlightthickness=0,
+                       relief="ridge"
     )
     g = Game(root,s)
+
+    # add testing objects
     t = Line((10,0,300),(10,20,300),"orange")
     g.add_object(t)
     t = Polygon(((10,0,20),(100,40,105),(200,0,20)),"red")
