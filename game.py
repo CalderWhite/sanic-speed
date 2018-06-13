@@ -225,23 +225,58 @@ class Engine():
         """Sorts faces and then draws the sorted faces onto the tkinter canvas."""
         # sort the faces first
         sorted_faces = []
-        sorted_z_values = []
+        sorted_coords = []
         for face in self.objects:
             # modify the coords based on the camera
             face.update_pos()
 
             # get the highest z value of the face
-            z = face.coords_cache[0][2]
-            for i in face.coords_cache:
-                if i[2] > z:
-                    z = i[2]
+            coords = sorted(face.coords_cache,key=lambda key:key[2])
 
-            # find the index that it should be inserted at in the sorted list of z values
-            i = bisect.bisect_left(sorted_z_values,z)
+            L = 0
+            R = len(sorted_coords) - 1
 
+            # binary search for where it should be inserted
+            i = None
+            def compare(a,b):
+                for i in range(3):
+                    if a[i][2] > b[i][2]:
+                        return 1
+                    elif a[i][2] < b[i][2]:
+                        return 0
+                return -1
+
+            L = 0
+            R = len(sorted_coords) - 1
+
+            while L <= R:
+                m = (L+R)//2
+                if compare(sorted_coords[m],coords) == 1:
+                    R = m - 1
+                elif compare(sorted_coords[m],coords) == 0:
+                    L = m + 1
+                else:
+                    i = m
+                    break
+            if len(sorted_coords) == 0:
+                i = 0
+            else:
+                if i == None:
+                    if L == len(sorted_coords):
+                        i = len(sorted_coords)
+                    else:
+                        try:
+                            if compare(sorted_coords[L],coords) == 1:
+                                i = L
+                            else:
+                                i = L + 1
+                        except:
+                            print(len(sorted_coords),L)
             # insert it 
-            sorted_z_values.insert(i,z)
+            sorted_coords.insert(i,coords)
             sorted_faces.insert(i,face)
+
+
         # then render them
         for i in range(len(sorted_faces)-1,-1,-1):
             sorted_faces[i].draw()
@@ -289,7 +324,7 @@ class Game():
         self.xvelocity = 0
         self.zvelocity = 0
         self.yvelocity = 0
-        self.speed = 0.1
+        self.speed = 0.5
 
         # game stats
         self.fps = 0
@@ -395,6 +430,7 @@ class Game():
         win32api.SetCursorPos((int(WIDTH/2),int(HEIGHT/2)))
 
         fps_text = self.canvas.create_text(10,10,text="",font="ansifixed",anchor="w",fill="white")
+        coords = self.canvas.create_text(10,24,text="",font="ansifixed",anchor="w",fill="white")
 
         while not self.stopped:
             # update the keys that are down
@@ -410,6 +446,7 @@ class Game():
 
             # debugging messages
             self.canvas.itemconfig(fps_text,text="fps: " + str(int(self.fps)))
+            self.canvas.itemconfig(coords,text="coords: " + str((round(self.engine.x),round(self.engine.y),round(self.engine.z))))
             # keep track of time for fps
             t = time.clock()
             # update the tkinter window (draw the buffer to the display)
