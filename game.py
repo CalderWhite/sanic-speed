@@ -1,7 +1,6 @@
 import tkinter
 import time
 import math
-import win32api
 import sys
 import bisect
 
@@ -82,8 +81,43 @@ class Polygon():
         """Render the object to the tkinter screen."""
         coords = self.get_2d_coords()
         if coords != None:
-            self.id = self.engine.canvas.create_polygon(coords,fill=self.color,width=1)
+            self.id = self.engine.canvas.create_polygon(coords,fill=self.color,width=1,outline="red")
+class ObjectFile():
+    def __init__(self, filename,scale=1,pos=None):
+        if not pos:
+            pos = (0,0,0)
 
+        self.verticies = []
+        self.faces = []
+
+        # parse file
+        f = open(filename,'r')
+        for l in f:
+            if l[:2] == "v ":
+                #print(l[2:].split(" "))
+                self.verticies.append(tuple(
+                    [
+                        float(l[2:].split(" ")[i])*scale + pos[i] for i in range(len(l[2:].split(" ")))
+                    ]
+                ))
+            if l[:2] == "f ":
+                self.faces.append(tuple(
+                    [
+                        tuple([
+                            int(j) for j in i.split("/")
+                        ]) for i in l[2:].split(" ")
+                    ]
+                ))
+        
+        # generate Polygons from it
+        self.polygons = []
+        for face in self.faces:
+            points = []
+            for line in face:
+                points.append(self.verticies[line[0]-1])
+            self.polygons.append(Polygon(tuple(points),color="white"))
+        
+        
 class Engine():
     def __init__(self, canvas):
 
@@ -149,28 +183,39 @@ class Engine():
         x1,y1 = v1
         x2,y2 = v2
 
-        slope = (y1 - y2)/(x1 - x2)
-        b = (y1+y2-slope*(x1+x2))/2
-
         constant = self.SCREEN_CLIP_MAX
-        if y1 > HEIGHT:
-            y1 = HEIGHT + constant
-            if slope != 0:
+
+        if (x1 - x2) == 0:
+            if y1 > HEIGHT + constant:
+                y1 = HEIGHT + constant
+            if y1 < -constant:
+                y1 = -constant
+            if x1 > WIDTH + constant:
+                x1 = WIDTH + constant
+            if x1 < -constant:
+                x1 = -constant
+        else:
+            slope = (y1 - y2)/(x1 - x2)
+            b = (y1+y2-slope*(x1+x2))/2
+
+            if y1 > HEIGHT + constant:
+                y1 = HEIGHT + constant
+                if slope != 0:
+                    # if the slope is 0, no modification to x is required
+                    x1 = (y1-b)/slope
+            if y1 < -constant:
+                y1 = -constant
                 # if the slope is 0, no modification to x is required
-                x1 = (y1-b)/slope
-        if y1 < 0:
-            y1 = -constant
-            # if the slope is 0, no modification to x is required
-            if slope != 0:
-                x1 = (y1-b)/slope
+                if slope != 0:
+                    x1 = (y1-b)/slope
 
-        if x1 > WIDTH:
-            x1 = WIDTH + constant
-            y1 = slope*x1 + b
-        if x1 < 0:
-            x1 = -constant
-            y1 = slope*x1 + b
-
+            if x1 > WIDTH + constant:
+                x1 = WIDTH + constant
+                y1 = slope*x1 + b
+            if x1 < -constant:
+                x1 = -constant
+                y1 = slope*x1 + b
+    
         return ((x1,y1),(x2,y2))
 
     def modify_point(self,v):
@@ -282,13 +327,15 @@ class Engine():
             sorted_faces[i].draw()
     
 class Game():
-    def __init__(self,root,canvas):
+    def __init__(self,root,canvas,cursor_scroll=False):
         # tkinter properties that are passed down
         self.root = root
         self.canvas = canvas
         # 3d graphics engine
         self.engine = Engine(self.canvas)
         self.stopped = False
+
+        self.cursor_scroll = cursor_scroll
 
         # settings values
         self.fps_speed_adjustment = 4000
@@ -302,8 +349,12 @@ class Game():
             68 : self.right, # d
             16 : self.down, # SHIFT
             32 : self.up, # SPACE
-            27: self.stop, # ESC
-            82: self.reset # r
+            27 : self.stop, # ESC
+            82 : self.reset, # r
+            37 : self.rot_left,
+            39 : self.rot_right,
+            38 : self.rot_up,
+            40: self.rot_down
         }
 
         # methods to be run once a key has stopped being pressed
@@ -315,16 +366,23 @@ class Game():
             16 : self.kill_yvelocity,
             32 : self.kill_yvelocity
         }
+
+        # rotation based on whether or not the mouse will be used
+        
+        
         # event bindings
         self.canvas.bind("<KeyPress>",self.keydown)
         self.canvas.bind("<KeyRelease>",self.keyup)
-        self.canvas.bind("<Motion>",self.rot)
+        if self.cursor_scroll:
+            self.canvas.bind("<Motion>",self.rot)
 
         # player init values
         self.xvelocity = 0
         self.zvelocity = 0
         self.yvelocity = 0
-        self.speed = 0.5
+        self.speed = 0.1
+
+        self.rot_velocity = math.pi/180/10
 
         # game stats
         self.fps = 0
@@ -339,17 +397,24 @@ class Game():
         self.engine.roty = 0
         self.engine.rotz = 0
 
-    def get_adjusted_speed(self):
+    def get_adjusted_speed(self,speed):
         """Returns the speed adjusted to the frame rate, so if frames drop or spike, the in game speed remains the same."""
         # for whatever reason, I've found that the relationship between speed and fps
         # does not feel normal when it is linear, so I've played around and landed on this equation that feels natural
-        return self.speed * math.sqrt(self.fps_speed_adjustment/self.fps**1.05)
-
+        return speed * math.sqrt(self.fps_speed_adjustment/self.fps**1.05)
+    def rot_up(self):
+        self.engine.roty += self.get_adjusted_speed(self.rot_velocity)
+    def rot_down(self):
+        self.engine.roty -= self.get_adjusted_speed(self.rot_velocity)
+    def rot_left(self):
+        self.engine.rotz -= self.get_adjusted_speed(self.rot_velocity)
+    def rot_right(self):
+        self.engine.rotz += self.get_adjusted_speed(self.rot_velocity)
     def up(self):
-        self.yvelocity = self.get_adjusted_speed()
+        self.yvelocity = self.get_adjusted_speed(self.speed)
 
     def down(self):
-        self.yvelocity = -self.get_adjusted_speed()
+        self.yvelocity = -self.get_adjusted_speed(self.speed)
 
     def stop(self):
         self.root.destroy()
@@ -366,16 +431,16 @@ class Game():
         self.engine.roty = -(self.mousey*(math.pi*2/HEIGHT))
 
     def forward(self):
-        self.zvelocity = self.get_adjusted_speed()
+        self.zvelocity = self.get_adjusted_speed(self.speed)
 
     def backward(self):
-        self.zvelocity = -self.get_adjusted_speed()
+        self.zvelocity = -self.get_adjusted_speed(self.speed)
 
     def right(self):
-        self.xvelocity = self.get_adjusted_speed()
+        self.xvelocity = self.get_adjusted_speed(self.speed)
 
     def left(self):
-        self.xvelocity = -self.get_adjusted_speed()
+        self.xvelocity = -self.get_adjusted_speed(self.speed)
 
     def kill_zvelocity(self):
         self.zvelocity = 0
@@ -427,11 +492,12 @@ class Game():
 
     def run(self):
         t = time.clock()
-        win32api.SetCursorPos((int(WIDTH/2),int(HEIGHT/2)))
+        if self.cursor_scroll:
+            win32api.SetCursorPos((int(WIDTH/2),int(HEIGHT/2)))
 
         fps_text = self.canvas.create_text(10,10,text="",font="ansifixed",anchor="w",fill="white")
         coords = self.canvas.create_text(10,24,text="",font="ansifixed",anchor="w",fill="white")
-
+        keys = self.canvas.create_text(10,38,font="ansifixed",anchor="w",fill="white")
         while not self.stopped:
             # update the keys that are down
             self.run_key_events()
@@ -447,6 +513,7 @@ class Game():
             # debugging messages
             self.canvas.itemconfig(fps_text,text="fps: " + str(int(self.fps)))
             self.canvas.itemconfig(coords,text="coords: " + str((round(self.engine.x),round(self.engine.y),round(self.engine.z))))
+            self.canvas.itemconfig(keys,text=str(self.keys_down))
             # keep track of time for fps
             t = time.clock()
             # update the tkinter window (draw the buffer to the display)
@@ -455,7 +522,11 @@ class Game():
 def setInitialValues():
     global g, WIDTH, HEIGHT
     fullscreen = True
+    cursor_scroll = True
 
+    if cursor_scroll:
+        global win32api
+        import win32api
     # create the tkinter window
     root = tkinter.Tk()
     if fullscreen:
@@ -472,15 +543,20 @@ def setInitialValues():
                        highlightthickness=0,
                        relief="ridge"
     )
-    g = Game(root,s)
+    g = Game(root,s,cursor_scroll=cursor_scroll)
 
     # add testing objects
-    t = Line((10,0,300),(10,20,300),"orange")
-    g.add_object(t)
-    t = Polygon(((10,0,20),(100,40,105),(200,0,20)),"red")
-    g.add_object(t)
-    t = Polygon(((10,0,20),(100,40,105),(10,0,200)),"blue")
-    g.add_object(t)
+    #t = Line((10,0,300),(10,20,300),"orange")
+    #g.add_object(t)
+    #t = Polygon(((10,0,20),(100,40,105),(200,0,20)),"red")
+    #g.add_object(t)
+    #t = Polygon(((10,0,20),(100,40,105),(10,0,200)),"blue")
+    #g.add_object(t)
+
+    obj = ObjectFile("cube.obj",scale=10,pos=(10,0,20))
+    print(obj.polygons[0].verticies)
+    for i in obj.polygons:
+        g.add_object(i)
 
 def runGame():
     global g
