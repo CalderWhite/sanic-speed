@@ -2,329 +2,25 @@ import tkinter
 import time
 import math
 import sys
-import bisect
+
+from graphics_objects import Line, Polygon, ObjectFile
+from graphics import Engine
+from spaceship import SpaceShip
 
 # constants
 WIDTH = 600
 HEIGHT = 600
 
-class Line():
-    def __init__(self, v1, v2, color):
-        self.color = color
-        
-        self.v1 = v1
-        self.v2 = v2
-
-        self.coords_cache = []
-
-        self.id = None
-        
-        # this will be initialized when the object is added to the game
-        self.engine = None
-
-    def update_pos(self):
-        self.coords_cache = []
-        self.coords_cache += [
-            self.engine.modify_point(self.v1),
-            self.engine.modify_point(self.v2)
-        ]
-    def get_2d_coords(self):
-        coords = self.engine.project_line(
-            self.coords_cache[0],
-            self.coords_cache[1]
-        )
-        return coords
-
-    def draw(self):
-        coords = self.get_2d_coords()
-        if coords != None:
-            self.id = self.engine.canvas.create_line(coords, fill=self.color,width=1)
-
-class Polygon():
-    def __init__(self,verticies,color):
-        self.color = color
-
-        self.verticies = verticies
-
-        self.coords_cache = []
-
-        self.id = None
-        # this will be initialized when the object is added to the game
-        self.engine = None
-
-    def update_pos(self):
-        """Update the coordinate cache based on the engine's camera position/rotation."""
-        self.coords_cache = []
-        for i in self.verticies:
-            self.coords_cache.append(
-                self.engine.modify_point(i)
-            )
-
-    def get_2d_coords(self):
-        """Returns a list of coordinates that are projected onto the screen. Given that (0,0) is the top left."""
-
-        coords = []
-        for i in range(len(self.verticies)):
-            projected = self.engine.project_line(
-                self.coords_cache[i],
-                self.coords_cache[(i+1) % len(self.coords_cache)],
-                polygon=True
-            )
-            if projected != None:
-                coords += projected
-        if coords == []:
-            return None
-
-        return coords
-
-    def draw(self):
-        """Render the object to the tkinter screen."""
-        coords = self.get_2d_coords()
-        if coords != None:
-            self.id = self.engine.canvas.create_polygon(coords,fill=self.color,width=1,outline="red")
-class ObjectFile():
-    def __init__(self, filename,scale=1,pos=None):
-        if not pos:
-            pos = (0,0,0)
-
-        self.verticies = []
-        self.faces = []
-
-        # parse file
-        f = open(filename,'r')
-        for l in f:
-            if l[:2] == "v ":
-                #print(l[2:].split(" "))
-                self.verticies.append(tuple(
-                    [
-                        float(l[2:].split(" ")[i])*scale + pos[i] for i in range(len(l[2:].split(" ")))
-                    ]
-                ))
-            if l[:2] == "f ":
-                self.faces.append(tuple(
-                    [
-                        tuple([
-                            int(j) for j in i.split("/")
-                        ]) for i in l[2:].split(" ")
-                    ]
-                ))
-        
-        # generate Polygons from it
-        self.polygons = []
-        for face in self.faces:
-            points = []
-            for line in face:
-                points.append(self.verticies[line[0]-1])
-            self.polygons.append(Polygon(tuple(points),color="white"))
-        
-        
-class Engine():
-    def __init__(self, canvas):
-
-        # camera rotation
-        self.rotz = 0
-        self.roty = 0
-        # camera coords
-        self.x = 0
-        self.y = 0
-        self.z = 0
-
-        # Field of View
-        self.FOV = 400
-
-        # the farthest a line/polygon can be rendered outside of the tkinter window before the engine begins clipping it
-        self.SCREEN_CLIP_MAX = 5000
-
-        self.canvas = canvas
-        self.objects = []
-
-    def add_object(self, obj):
-        self.objects.append(obj)
-
-    def clear(self):
-        # clear the screen
-        # TODO: this isn't really efficient. It's better to configure them / change coords
-        for i in range(len(self.objects)):
-            if type(self.objects[i].id) == list:
-                for j in self.objects[i].id:
-                    self.canvas.delete(j)
-                self.objects[i].id = []
-            else:
-                self.canvas.delete(self.objects[i].id)
-                self.objects[i].id = None
-
-    def set_coords(self,x,y,z):
-        # update the coordinates of the camera
-        self.x = x
-        self.y = y
-        self.z = z
-
-    def rot2d(self,pos,rad):
-        x,y=pos
-        s,c = math.sin(rad),math.cos(rad)
-
-        return x*c-y*s, y*c+x*s
-    def clip_3d_line(self,v1,v2):
-        """Calder White's proprietary method for finding the intersection of a line and the z axis."""
-        x1,y1,z1 = v1
-        x2,y2,z2 = v2
-        slopex = (x1 - x2)/(z1 - z2)
-        bx = ((x1+x2)-slopex*(z1+z2))/2
-
-        slopey = (y1 - y2)/(z1 - z2)
-        by = ((y1+y2)-slopey*(z1+z2))/2
-
-        # in the famous words of Mr. Schattman, graphics is just a series of optical illusions and cheating
-        z = 0.001
-
-        return (bx,by,z)
-    def clip_2d_line(self,v1,v2):
-        """Clips a 2d line to a built in max and min for x and y."""
-        x1,y1 = v1
-        x2,y2 = v2
-
-        constant = self.SCREEN_CLIP_MAX
-
-        if (x1 - x2) == 0:
-            if y1 > HEIGHT + constant:
-                y1 = HEIGHT + constant
-            if y1 < -constant:
-                y1 = -constant
-            if x1 > WIDTH + constant:
-                x1 = WIDTH + constant
-            if x1 < -constant:
-                x1 = -constant
-        else:
-            slope = (y1 - y2)/(x1 - x2)
-            b = (y1+y2-slope*(x1+x2))/2
-
-            if y1 > HEIGHT + constant:
-                y1 = HEIGHT + constant
-                if slope != 0:
-                    # if the slope is 0, no modification to x is required
-                    x1 = (y1-b)/slope
-            if y1 < -constant:
-                y1 = -constant
-                # if the slope is 0, no modification to x is required
-                if slope != 0:
-                    x1 = (y1-b)/slope
-
-            if x1 > WIDTH + constant:
-                x1 = WIDTH + constant
-                y1 = slope*x1 + b
-            if x1 < -constant:
-                x1 = -constant
-                y1 = slope*x1 + b
-    
-        return ((x1,y1),(x2,y2))
-
-    def modify_point(self,v):
-        """
-        Adjusts a vertex's position based on the camera's position and rotation.
-        """
-        x,y,z = v
-        # move the point basd on the camera's position
-        x -= self.x
-        y -= self.y
-        z -= self.z
-        # rotate on both axis
-        x,z = self.rot2d((x,z),self.rotz)
-        y,z = self.rot2d((y,z),self.roty)
-
-        return (x,y,z)
-    def project_line(self,v1,v2,polygon=False):
-        """
-        Project a 3d line onto a 2d plane and z axis clipping.
-        Also clips to a built in max/min for the 2d coordinates to compensate for a tkinter create_polygon bug.
-        """
-
-        # debugging
-        try:
-            # don't render a line that's out of screen
-            if v1[2] < 0 and v2[2] < 0:
-                return None
-            elif v1[2] < 0:
-                v1 = self.clip_3d_line(v1,v2)
-            elif v2[2] < 0:
-                v2 = self.clip_3d_line(v2,v1)
-        except ZeroDivisionError:
-            pass
-        # incorperate z and field of view,
-        # then move points to originate from the center of the screen, since that's what the algorithm
-        # is designed to generate points for
-        f1 = self.FOV/v1[2]
-        p1 = (v1[0]*f1 + WIDTH/2,-v1[1]*f1 + HEIGHT/2)
-
-        f2 = self.FOV/v2[2]
-        p2 = (v2[0]*f2 + WIDTH/2,-v2[1]*f2 + HEIGHT/2)
-
-        # if the line is for a polygon, clip the 2d version as well, since there is a tkinter error with very large 
-        # numbers that need to be clipped. (So we do it our selves)
-        if polygon:
-            p1,p2 = self.clip_2d_line(p1,p2)
-            p2,p1 = self.clip_2d_line(p2,p1)
-
-        return (p1,p2)
-
-    def render_objects(self):
-        """Sorts faces and then draws the sorted faces onto the tkinter canvas."""
-        # sort the faces first
-        sorted_faces = []
-        sorted_coords = []
-        for face in self.objects:
-            # modify the coords based on the camera
-            face.update_pos()
-
-            # get the highest z value of the face
-            coords = sorted(face.coords_cache,key=lambda key:key[2])
-
-            L = 0
-            R = len(sorted_coords) - 1
-
-            # binary search for where it should be inserted
-            i = None
-            def compare(a,b):
-                for i in range(3):
-                    if a[i][2] > b[i][2]:
-                        return 1
-                    elif a[i][2] < b[i][2]:
-                        return 0
-                return -1
-
-            L = 0
-            R = len(sorted_coords) - 1
-
-            while L <= R:
-                m = (L+R)//2
-                if compare(sorted_coords[m],coords) == 1:
-                    R = m - 1
-                elif compare(sorted_coords[m],coords) == 0:
-                    L = m + 1
-                else:
-                    i = m
-                    break
-            if len(sorted_coords) == 0:
-                i = 0
-            else:
-                if i == None:
-                    if L == len(sorted_coords):
-                        i = len(sorted_coords)
-                    else:
-                        try:
-                            if compare(sorted_coords[L],coords) == 1:
-                                i = L
-                            else:
-                                i = L + 1
-                        except:
-                            print(len(sorted_coords),L)
-            # insert it 
-            sorted_coords.insert(i,coords)
-            sorted_faces.insert(i,face)
-
-
-        # then render them
-        for i in range(len(sorted_faces)-1,-1,-1):
-            sorted_faces[i].draw()
+class Asteroid():
+    def __init__(self,polygons):
+        self.polygons = polygons
+    def get_polygons(self):
+        return self.polygons
+    def init(self,engine):
+        for i in range(len(self.polygons)):
+            self.polygons[i].set_engine(engine)
+    def update(self):
+        pass
     
 class Game():
     def __init__(self,root,canvas,cursor_scroll=False):
@@ -332,13 +28,21 @@ class Game():
         self.root = root
         self.canvas = canvas
         # 3d graphics engine
-        self.engine = Engine(self.canvas)
+        self.engine = Engine(self.canvas,WIDTH,HEIGHT)
         self.stopped = False
 
         self.cursor_scroll = cursor_scroll
 
-        # settings values
+        ### BEGIN SETTINGS values ###
         self.fps_speed_adjustment = 4000
+
+        # movement
+        self.speed = 0.1
+        self.rot_velocity = math.pi/180/5
+        self.noclip = False
+        ###  END SETTINGS values  ###
+
+        self.objects = []
 
         # key bindings / checking
         self.keys_down = []
@@ -364,25 +68,39 @@ class Game():
             65 : self.kill_xvelocity,
             68 : self.kill_xvelocity,
             16 : self.kill_yvelocity,
-            32 : self.kill_yvelocity
+            32 : self.kill_yvelocity,
+            84 : self.toggle_noclip
         }
 
         # rotation based on whether or not the mouse will be used
-        
-        
         # event bindings
         self.canvas.bind("<KeyPress>",self.keydown)
         self.canvas.bind("<KeyRelease>",self.keyup)
         if self.cursor_scroll:
             self.canvas.bind("<Motion>",self.rot)
 
-        # player init values
+        # camera init values
         self.xvelocity = 0
         self.zvelocity = 0
         self.yvelocity = 0
-        self.speed = 0.1
 
-        self.rot_velocity = math.pi/180/10
+        # camera's offset from the spaceship's position
+        self.xoffset = 10
+        self.yoffset = 20
+        self.zoffset = -10
+
+        # space ship
+        self.ship = SpaceShip(
+            (0,0,0),
+            self.speed,
+            self.rot_velocity,
+            self.engine,
+            ObjectFile("spaceship.obj",
+                scale=0.25,
+                pos=(10,0,20)
+            )
+        )
+        self.objects.append(self.ship)
 
         # game stats
         self.fps = 0
@@ -393,6 +111,10 @@ class Game():
         self.canvas.pack()
         self.canvas.focus_set()
 
+    def add_object(self,obj):
+        obj.init(self.engine)
+        self.objects.append(obj)
+
     def reset(self):
         self.engine.roty = 0
         self.engine.rotz = 0
@@ -401,20 +123,41 @@ class Game():
         """Returns the speed adjusted to the frame rate, so if frames drop or spike, the in game speed remains the same."""
         # for whatever reason, I've found that the relationship between speed and fps
         # does not feel normal when it is linear, so I've played around and landed on this equation that feels natural
-        return speed * math.sqrt(self.fps_speed_adjustment/self.fps**1.05)
+        return speed * math.sqrt(self.fps_speed_adjustment/self.fps)
+
+    def toggle_noclip(self):
+        self.noclip = not self.noclip
     def rot_up(self):
-        self.engine.roty += self.get_adjusted_speed(self.rot_velocity)
+        if self.noclip:
+            self.engine.roty += self.get_adjusted_speed(self.rot_velocity)
+        else:
+            self.ship.rot_up()
     def rot_down(self):
-        self.engine.roty -= self.get_adjusted_speed(self.rot_velocity)
+        if self.noclip:
+            self.engine.roty -= self.get_adjusted_speed(self.rot_velocity)
+        else:
+            self.ship.rot_down()
     def rot_left(self):
-        self.engine.rotz -= self.get_adjusted_speed(self.rot_velocity)
+        if self.noclip:
+            self.engine.rotz -= self.get_adjusted_speed(self.rot_velocity)
+        else:
+            self.ship.rot_left()
     def rot_right(self):
-        self.engine.rotz += self.get_adjusted_speed(self.rot_velocity)
+        if self.noclip:
+            self.engine.rotz += self.get_adjusted_speed(self.rot_velocity)
+        else:
+            self.ship.rot_right()
     def up(self):
-        self.yvelocity = self.get_adjusted_speed(self.speed)
+        if self.noclip:
+            self.yvelocity = self.get_adjusted_speed(self.speed)
+        else:
+            self.ship.up()
 
     def down(self):
-        self.yvelocity = -self.get_adjusted_speed(self.speed)
+        if self.noclip:
+            self.yvelocity = -self.get_adjusted_speed(self.speed)
+        else:
+            self.ship.down()
 
     def stop(self):
         self.root.destroy()
@@ -426,45 +169,71 @@ class Game():
         x,y = event.x, event.y
         self.mousex += x - WIDTH/2
         self.mousey += y - HEIGHT/2
-
-        self.engine.rotz = self.mousex*(math.pi*2/WIDTH) 
-        self.engine.roty = -(self.mousey*(math.pi*2/HEIGHT))
+        if self.noclip:
+            self.engine.rotz = self.mousex*(math.pi*2/WIDTH) 
+            self.engine.roty = -(self.mousey*(math.pi*2/HEIGHT))
 
     def forward(self):
-        self.zvelocity = self.get_adjusted_speed(self.speed)
+        if self.noclip:
+            self.zvelocity = self.get_adjusted_speed(self.speed)
+        else:
+            self.ship.forward()
 
     def backward(self):
-        self.zvelocity = -self.get_adjusted_speed(self.speed)
+        if self.noclip:
+            self.zvelocity = -self.get_adjusted_speed(self.speed)
+        else:
+            self.ship.backward()
 
     def right(self):
-        self.xvelocity = self.get_adjusted_speed(self.speed)
+        if self.noclip:
+            self.xvelocity = self.get_adjusted_speed(self.speed)
+        else:
+            self.ship.right()
 
     def left(self):
-        self.xvelocity = -self.get_adjusted_speed(self.speed)
+        if self.noclip:
+            self.xvelocity = -self.get_adjusted_speed(self.speed)
+        else:
+            self.ship.left()
 
     def kill_zvelocity(self):
-        self.zvelocity = 0
+        if self.noclip:
+            self.zvelocity = 0
+        else:
+            self.ship.kill_zvelocity()
 
     def kill_xvelocity(self):
-        self.xvelocity = 0
+        if self.noclip:
+            self.xvelocity = 0
+        else:
+            self.ship.kill_xvelocity()
 
     def kill_yvelocity(self):
-        self.yvelocity = 0
+        if self.noclip:
+            self.yvelocity = 0
+        else:
+            self.ship.kill_yvelocity()
 
     def update_pos(self):
         """
         Update the camera's position based velocity, 
         as well as incorperating the direction to make xz axis movement feel natural.
         """
-        xv, zv, yv = self.xvelocity, self.zvelocity, self.yvelocity
-        rotz = self.engine.rotz
-        self.engine.x += zv*math.sin(rotz) + xv*math.cos(rotz)
-        self.engine.z += zv*math.cos(rotz) - xv*math.sin(rotz)
-        self.engine.y += yv
-        
-    def add_object(self,obj):
-        obj.engine = self.engine
-        self.engine.add_object(obj)
+        if self.noclip:
+            xv, zv, yv = self.xvelocity, self.zvelocity, self.yvelocity
+            rotz = self.engine.rotz
+            self.engine.x += zv*math.sin(rotz) + xv*math.cos(rotz)
+            self.engine.z += zv*math.cos(rotz) - xv*math.sin(rotz)
+            self.engine.y += yv
+        else:
+            self.ship.update_pos()
+
+    def move_to_ship(self):
+        if not self.noclip:
+            self.engine.x = self.ship.x + self.xoffset
+            self.engine.y = self.ship.y + self.yoffset
+            self.engine.z = self.ship.z + self.zoffset
 
     def run_key_events(self):
         for i in self.keys_down:
@@ -484,6 +253,13 @@ class Game():
                 self.key_up_mapping[k]()
             self.keys_down.remove(k)
 
+    def update_objects(self):
+        objects = []
+        for o in self.objects:
+            o.update()
+            objects += o.get_polygons()
+        self.engine.update_objects(objects)
+
     def render(self):
         # clear the current screen
         self.engine.clear()
@@ -496,14 +272,22 @@ class Game():
             win32api.SetCursorPos((int(WIDTH/2),int(HEIGHT/2)))
 
         fps_text = self.canvas.create_text(10,10,text="",font="ansifixed",anchor="w",fill="white")
-        coords = self.canvas.create_text(10,24,text="",font="ansifixed",anchor="w",fill="white")
-        keys = self.canvas.create_text(10,38,font="ansifixed",anchor="w",fill="white")
+        zs = self.canvas.create_text(10,20,text="",font="ansifixed",anchor="w",fill="white")
+        xs = self.canvas.create_text(10,30,text="",font="ansifixed",anchor="w",fill="white")
+
         while not self.stopped:
             # update the keys that are down
             self.run_key_events()
-            # move the player based
+            # move the camera/spaceship based on keys
             self.update_pos()
-            # update the tkinter buffer
+            # move the camera based on the spaceship
+            self.move_to_ship()
+
+
+
+            # update all objects in the Game and the Engine
+            self.update_objects()
+            # then render
             self.render()
 
             # updating fps
@@ -512,8 +296,8 @@ class Game():
 
             # debugging messages
             self.canvas.itemconfig(fps_text,text="fps: " + str(int(self.fps)))
-            self.canvas.itemconfig(coords,text="coords: " + str((round(self.engine.x),round(self.engine.y),round(self.engine.z))))
-            self.canvas.itemconfig(keys,text=str(self.keys_down))
+            self.canvas.itemconfig(zs,text="zs: " + str(self.ship.zvelocity))
+            self.canvas.itemconfig(xs,text="xs: " + str(self.ship.xvelocity))
             # keep track of time for fps
             t = time.clock()
             # update the tkinter window (draw the buffer to the display)
@@ -548,15 +332,19 @@ def setInitialValues():
     # add testing objects
     #t = Line((10,0,300),(10,20,300),"orange")
     #g.add_object(t)
-    #t = Polygon(((10,0,20),(100,40,105),(200,0,20)),"red")
+    t = Polygon(((10,0,60),(100,40,145),(200,0,60)),"blue")
+    a = Asteroid([t])
+    g.add_object(a)
+
     #g.add_object(t)
     #t = Polygon(((10,0,20),(100,40,105),(10,0,200)),"blue")
     #g.add_object(t)
 
-    obj = ObjectFile("cube.obj",scale=10,pos=(10,0,20))
-    print(obj.polygons[0].verticies)
-    for i in obj.polygons:
-        g.add_object(i)
+    #obj = ObjectFile("spaceship.obj",scale=0.25,pos=(10,0,20))
+    #obj.polygons[1].color = "blue"
+    #for i in obj.polygons:
+        #print(i.verticies)
+    #    g.add_object(i)
 
 def runGame():
     global g
