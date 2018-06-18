@@ -85,36 +85,72 @@ class Polygon():
             self.id = self.engine.canvas.create_polygon(coords,fill=self.color,outline="red")
 
 class ObjectFile():
-    def __init__(self, filename,scale=1,pos=None):
+    def __init__(self, filename,scale=1,pos=None,fformat="standard"):
+        """
+        Loads in the veriticies and faces in an object file and converts them to Polygons.
+        2 Object file formats are supported: standard and tinkercad.
+        This is because when tinkercad exports to obj the format used is slightly different.
+        """
+
         if not pos:
             pos = (0,0,0)
 
         self.verticies = []
         self.faces = []
+        self.polygons = []
 
         # parse file
         f = open(filename,'r')
-        for l in f:
-            if l[:2] == "v ":
-                #print(l[2:].split(" "))
-                self.verticies.append(tuple(
-                    [
-                        float(l[2:].split(" ")[i])*scale + pos[i] for i in range(len(l[2:].split(" ")))
-                    ]
-                ))
-            if l[:2] == "f ":
-                self.faces.append(tuple(
-                    [
-                        tuple([
-                            int(j) for j in i.split("/")
-                        ]) for i in l[2:].split(" ")
-                    ]
-                ))
-        
-        # generate Polygons from it
-        self.polygons = []
-        for face in self.faces:
-            points = []
-            for line in face:
-                points.append(self.verticies[line[0]-1])
-            self.polygons.append(Polygon(tuple(points),color="white"))
+        if fformat == "standard":
+            for l in f:
+                if l[:2] == "v ":
+                    #print(l[2:].split(" "))
+                    self.verticies.append(tuple(
+                        [
+                            float(l[2:].split(" ")[i])*scale + pos[i] 
+                            for i in range(len(l[2:].split(" ")))
+                        ]
+                    ))
+                elif l[:2] == "f ":
+                    self.faces.append(tuple(
+                        [
+                            tuple([
+                                int(j) for j in i.split("/")
+                            ]) for i in l[2:].split(" ")
+                        ]
+                    ))
+            # generate Polygons from it
+            for face in self.faces:
+                points = []
+                for line in face:
+                    points.append(self.verticies[line[0]-1])
+                self.polygons.append(Polygon(tuple(points),color="white"))
+
+        elif fformat == "tinkercad":
+            for l in f:
+                l = l.strip().replace("\t","")
+                if l[:2] == "v ":
+                    self.verticies.append(
+                        [
+                            float(i)*scale for i in l[2:].split(" ")
+                        ]
+                    )
+                    for i in range(3):
+                        self.verticies[-1][i] += pos[i]
+                    self.verticies[-1] = tuple(self.verticies[-1])
+                elif l[:2] == "f ":
+                    self.faces.append(tuple(
+                        [
+                            int(i) for i in l[2:].split(" ")
+                        ]
+                    ))
+            verts = []
+            # generate Polygons from the parsed verticies and faces
+            for face in self.faces:
+                points = [self.verticies[i-1] for i in face]
+                self.polygons.append(
+                    Polygon(tuple(points),color="grey")
+                )
+
+        else:
+            raise Exception("Unknown .obj file format requested")

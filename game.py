@@ -21,6 +21,7 @@ class Asteroid():
             self.polygons[i].set_engine(engine)
     def update(self):
         pass
+
     
 class Game():
     def __init__(self,root,canvas,cursor_scroll=False):
@@ -95,7 +96,7 @@ class Game():
             self.speed,
             self.rot_velocity,
             self.engine,
-            ObjectFile("spaceship.obj",
+            ObjectFile("objects/spaceship.obj",
                 scale=0.25,
                 pos=(10,0,20)
             )
@@ -244,7 +245,7 @@ class Game():
 
             x += self.xoffset
             y += self.yoffset
-            z += self.zoffset
+            z += self.zoffset# + -0.25*self.ship.zvelocity
 
             x -= midx
             y -= midy
@@ -306,7 +307,7 @@ class Game():
         rzs = self.canvas.create_text(10,40,text="",font="ansifixed",anchor="w",fill="white")
 
         while not self.stopped:
-            # update the keys that are down
+            # update the keys that are downd
             self.run_key_events()
             # move the camera/spaceship based on keys
             self.update_pos()
@@ -358,9 +359,6 @@ def setInitialValues():
     )
     g = Game(root,s,cursor_scroll=cursor_scroll)
 
-    # add testing objects
-    #t = Line((10,0,300),(10,20,300),"orange")
-    #g.add_object(t)
     colors = ["blue","red","yellow","green"]
     polys = []
     for i in range(40):
@@ -368,16 +366,17 @@ def setInitialValues():
         polys.append(Polygon(((10,0,z),(100,40,z),(200,0,z)),colors[i%len(colors)]))
     a = Asteroid(polys)
     g.add_object(a)
-
-    #g.add_object(t)
-    #t = Polygon(((10,0,20),(100,40,105),(10,0,200)),"blue")
-    #g.add_object(t)
-
-    #obj = ObjectFile("spaceship.obj",scale=0.25,pos=(10,0,20))
-    #obj.polygons[1].color = "blue"
-    #for i in obj.polygons:
-        #print(i.verticies)
-    #    g.add_object(i)
+    """
+    for i in range(40):
+        o = ObjectFile(
+            "objects/tunnel.obj",
+            scale=5,
+            pos=(20,0,i*80 + 100),
+            fformat="tinkercad"
+        )
+        a = Asteroid(o.polygons)
+        g.add_object(a)
+    """
 
 def runGame():
     global g
