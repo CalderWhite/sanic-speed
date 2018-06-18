@@ -22,6 +22,7 @@ class Engine():
         self.objects = []
         self.WIDTH = width#canvas.winfo_width()
         self.HEIGHT = height#canvas.winfo_height()
+        self.RENDER_DISTANCE = 4000
 
     def update_objects(self,objects):
         self.objects = objects
@@ -184,6 +185,9 @@ class Engine():
             z = sum(z)**2
             
             dist = x+y+z
+
+            if dist-(self.x**2 + self.y**2 + self.z**2) > 3*self.RENDER_DISTANCE**2:
+                continue
 
             i = bisect.bisect_left(sorted_coords,dist)
             # insert it 
