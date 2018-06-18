@@ -37,7 +37,7 @@ class Game():
         self.fps_speed_adjustment = 4000
 
         # movement
-        self.speed = 0.1
+        self.speed = 1
         self.rot_velocity = math.pi/180/5
         self.noclip = False
         ###  END SETTINGS values  ###
@@ -231,9 +231,38 @@ class Game():
 
     def move_to_ship(self):
         if not self.noclip:
-            self.engine.x = self.ship.x + self.xoffset
-            self.engine.y = self.ship.y + self.yoffset
-            self.engine.z = self.ship.z + self.zoffset
+            x = self.ship.x
+            y = self.ship.y
+            z = self.ship.z
+
+            # rotate camera around ship
+            # find the mid point of the xy axis to rotate around
+            midx = x + (self.ship.upperx-self.ship.lowerx)/2
+            midy = y + (self.ship.uppery-self.ship.lowery)/2
+            midz = z + (self.ship.upperz-self.ship.lowerz)*0.75 # slightly off the middle to make it look nicer
+
+
+            x += self.xoffset
+            y += self.yoffset
+            z += self.zoffset
+
+            x -= midx
+            y -= midy
+            z -= midz
+
+            y,z = self.engine.rot2d((y,z),-self.ship.roty)
+            x,z = self.engine.rot2d((x,z),-self.ship.rotz)
+
+            x += midx
+            y += midy
+            z += midz
+
+            self.engine.x = x
+            self.engine.y = y
+            self.engine.z = z
+            
+            self.engine.rotz = self.ship.rotz
+            self.engine.roty = self.ship.roty
 
     def run_key_events(self):
         for i in self.keys_down:
@@ -274,6 +303,7 @@ class Game():
         fps_text = self.canvas.create_text(10,10,text="",font="ansifixed",anchor="w",fill="white")
         zs = self.canvas.create_text(10,20,text="",font="ansifixed",anchor="w",fill="white")
         xs = self.canvas.create_text(10,30,text="",font="ansifixed",anchor="w",fill="white")
+        rzs = self.canvas.create_text(10,40,text="",font="ansifixed",anchor="w",fill="white")
 
         while not self.stopped:
             # update the keys that are down
@@ -282,8 +312,6 @@ class Game():
             self.update_pos()
             # move the camera based on the spaceship
             self.move_to_ship()
-
-
 
             # update all objects in the Game and the Engine
             self.update_objects()
@@ -298,6 +326,7 @@ class Game():
             self.canvas.itemconfig(fps_text,text="fps: " + str(int(self.fps)))
             self.canvas.itemconfig(zs,text="zs: " + str(self.ship.zvelocity))
             self.canvas.itemconfig(xs,text="xs: " + str(self.ship.xvelocity))
+            self.canvas.itemconfig(rzs,text="rzs: " + str(self.ship.rotz_velocity))
             # keep track of time for fps
             t = time.clock()
             # update the tkinter window (draw the buffer to the display)
@@ -332,8 +361,12 @@ def setInitialValues():
     # add testing objects
     #t = Line((10,0,300),(10,20,300),"orange")
     #g.add_object(t)
-    t = Polygon(((10,0,60),(100,40,145),(200,0,60)),"blue")
-    a = Asteroid([t])
+    colors = ["blue","red","yellow","green"]
+    polys = []
+    for i in range(40):
+        z = i*300 + 60
+        polys.append(Polygon(((10,0,z),(100,40,z),(200,0,z)),colors[i%len(colors)]))
+    a = Asteroid(polys)
     g.add_object(a)
 
     #g.add_object(t)
