@@ -167,7 +167,8 @@ class Game():
         sys.exit(0)
 
     def rot(self,event):
-        win32api.SetCursorPos((int(WIDTH/2),int(HEIGHT/2)))
+        if not self.intro:
+            win32api.SetCursorPos((int(WIDTH/2),int(HEIGHT/2)))
         x,y = event.x, event.y
         self.mousex += x - WIDTH/2
         self.mousey += y - HEIGHT/2
@@ -298,29 +299,50 @@ class Game():
         self.engine.render_objects()
 
     def intro(self):
-
+        self.intro = True
         self.ship.x = -10
         self.ship.z = 20
         self.ship.rotx = 20*math.pi/180
         self.ship.velocity_rot = False
 
-        title = self.canvas.create_text(WIDTH/2,30,text="Sanic Speed",font=("ansifixed",30),fill="white")
+        title = self.canvas.create_text(WIDTH/2,30,text="Sanic Speed",font=("Fixedsys",36),fill="white")
+        escape_phrase = self.canvas.create_text(5,10,text="[ESC] to Quit",font=("Courier New",14),fill="white",anchor="w")
         global done
         done = False
+        INSTRUCTIONS = """
+        Welcome to Sanic Speed!
+        Standard WASD controls are used for movement.
+        [W] : forward, [S] : backwards
+        [A] : left, [D] : right
+        The arrow keys are used for rotation. The forward and backward keys are inverted to give an intutitive feel to the flight.
+        If at any point you wish to fly around the world not bound to the plane, simply press [t] to toggle "noclip".
+        To quit, presss escape [ESC]. Thanks for playing!
+        """
         def test():
             global done
             done = True
+        def instructions():
+            toplevel = tkinter.Toplevel()
+            toplevel.title("Sanic Speed Instructions")
+            label1 = tkinter.Label(toplevel, text=INSTRUCTIONS, font=("Helvetica",14), height=0, width=100)
+            label1.pack()
         b = tkinter.Button(self.root, text="OK", command=test, width=30, height=2)
         b.pack()
-        b.place(x=WIDTH/2 - 100,y =HEIGHT*0.75)
+        b.place(x=WIDTH/2 - 100,y=HEIGHT*0.75)
+        b2 = tkinter.Button(self.root, text="INSTRUCTIONS", command=instructions, width=30, height=2)
+        b2.pack()
+        b2.place(x=WIDTH/2 - 100, y=HEIGHT*0.75 + 50)
 
         while not done:
+            if 27 in self.keys_down:
+                self.stop()
             self.ship.rotz_velocity = 0.1
             self.update_pos()
             self.update_objects()
             self.render()
 
             self.root.update()
+        self.intro = False
 
         # clear away intro screen stuff for gameplay
         # reset ship
@@ -330,7 +352,9 @@ class Game():
         self.ship.rotx = 0
         # clear away widgets
         b.destroy()
+        b2.destroy()
         self.canvas.delete(title)
+        self.canvas.delete(escape_phrase)
         self.root.config(cursor='none')
 
     def run(self):
@@ -374,7 +398,7 @@ class Game():
 def setInitialValues():
     global g, WIDTH, HEIGHT
     fullscreen = True
-    cursor_scroll = False
+    cursor_scroll = True
 
     if cursor_scroll:
         global win32api
@@ -398,6 +422,17 @@ def setInitialValues():
         "audio" : False
     }
     g = Game(root,s,settings=settings,cursor_scroll=cursor_scroll)
+
+def runGame():
+    global g
+    g.intro()
+    colors = ["blue","red","yellow","green"]
+    polys = []
+    for i in range(40):
+        z = i*300 + 60
+        polys.append(Polygon(((10,0,z),(100,40,z),(200,0,z)),colors[i%len(colors)]))
+    a = Asteroid(polys)
+    g.add_object(a)
     """
     exponent = 1.4
     for i in range(20):
@@ -411,17 +446,6 @@ def setInitialValues():
         a = Asteroid(o.polygons)
         g.add_object(a)
     """
-
-def runGame():
-    global g
-    g.intro()
-    colors = ["blue","red","yellow","green"]
-    polys = []
-    for i in range(40):
-        z = i*300 + 60
-        polys.append(Polygon(((10,0,z),(100,40,z),(200,0,z)),colors[i%len(colors)]))
-    a = Asteroid(polys)
-    g.add_object(a)
     g.run()
 
 setInitialValues()
