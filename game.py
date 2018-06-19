@@ -1,4 +1,5 @@
 import tkinter
+from tkinter import font
 import time
 import math
 import sys
@@ -305,7 +306,9 @@ class Game():
         self.ship.rotx = 20*math.pi/180
         self.ship.velocity_rot = False
 
-        title = self.canvas.create_text(WIDTH/2,30,text="Sanic Speed",font=("Fixedsys",36),fill="white")
+        title = self.canvas.create_text(WIDTH/2,100,text="Sanic Speed",font=("Fixedsys",69),fill="white")
+        f = font.Font(family="Verdana",slant=font.ITALIC,size=10)
+        subtitle = self.canvas.create_text(WIDTH/2,170,text="A three dimensional space flight simulator, in pure python tkinter.",font=f,fill="white")
         escape_phrase = self.canvas.create_text(5,10,text="[ESC] to Quit",font=("Courier New",14),fill="white",anchor="w")
         global done
         done = False
@@ -314,9 +317,9 @@ class Game():
         Standard WASD controls are used for movement.
         [W] : forward, [S] : backwards
         [A] : left, [D] : right
-        The arrow keys are used for rotation. The forward and backward keys are inverted to give an intutitive feel to the flight.
+        The arrow keys are used for rotation. The forward and backward keys are inverted to give an intuitive feel to the flight.
         If at any point you wish to fly around the world not bound to the plane, simply press [t] to toggle "noclip".
-        To quit, presss escape [ESC]. Thanks for playing!
+        To quit, press escape [ESC]. Thanks for playing!
         """
         def test():
             global done
@@ -355,6 +358,7 @@ class Game():
         b2.destroy()
         self.canvas.delete(title)
         self.canvas.delete(escape_phrase)
+        self.canvas.delete(subtitle)
         self.root.config(cursor='none')
 
     def run(self):
@@ -364,9 +368,9 @@ class Game():
         self.root.config(cursor='none')
 
         fps_text = self.canvas.create_text(10,10,text="",font="ansifixed",anchor="w",fill="white")
-        zs = self.canvas.create_text(10,20,text="",font="ansifixed",anchor="w",fill="white")
-        xs = self.canvas.create_text(10,30,text="",font="ansifixed",anchor="w",fill="white")
-        rzs = self.canvas.create_text(10,40,text="",font="ansifixed",anchor="w",fill="white")
+        #zs = self.canvas.create_text(10,20,text="",font="ansifixed",anchor="w",fill="white")
+        #xs = self.canvas.create_text(10,30,text="",font="ansifixed",anchor="w",fill="white")
+        #rzs = self.canvas.create_text(10,40,text="",font="ansifixed",anchor="w",fill="white")
 
         while not self.stopped:
             # update the keys that are down
@@ -387,9 +391,9 @@ class Game():
 
             # debugging messages
             self.canvas.itemconfig(fps_text,text="fps: " + str(int(self.fps)))
-            self.canvas.itemconfig(zs,text="zs: " + str(self.ship.zvelocity))
-            self.canvas.itemconfig(xs,text="xs: " + str(self.ship.xvelocity))
-            self.canvas.itemconfig(rzs,text="rzs: " + str(self.ship.rotz_velocity))
+            #self.canvas.itemconfig(zs,text="zs: " + str(self.ship.zvelocity))
+            #self.canvas.itemconfig(xs,text="xs: " + str(self.ship.xvelocity))
+            #self.canvas.itemconfig(rzs,text="rzs: " + str(self.ship.rotz_velocity))
             # keep track of time for fps
             t = time.clock()
             # update the tkinter window (draw the buffer to the display)
@@ -398,7 +402,7 @@ class Game():
 def setInitialValues():
     global g, WIDTH, HEIGHT
     fullscreen = True
-    cursor_scroll = True
+    cursor_scroll = False
 
     if cursor_scroll:
         global win32api
