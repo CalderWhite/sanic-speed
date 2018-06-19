@@ -85,7 +85,7 @@ class Polygon():
             self.id = self.engine.canvas.create_polygon(coords,fill=self.color,outline="red")
 
 class ObjectFile():
-    def __init__(self, filename,scale=1,pos=None,fformat="standard"):
+    def __init__(self, filename,scale=1,pos=None,pos2=None,fformat="standard"):
         """
         Loads in the veriticies and faces in an object file and converts them to Polygons.
         2 Object file formats are supported: standard and tinkercad.
@@ -94,6 +94,8 @@ class ObjectFile():
 
         if not pos:
             pos = (0,0,0)
+        if not pos2:
+            pos2 = (0,0,0)
 
         self.verticies = []
         self.faces = []
@@ -147,9 +149,14 @@ class ObjectFile():
             verts = []
             # generate Polygons from the parsed verticies and faces
             for face in self.faces:
-                points = [self.verticies[i-1] for i in face]
+                points = [list(self.verticies[i-1]) for i in face]
+                for i in range(len(points)):
+                    if (points[i][2]-pos[2])/scale == 40.0:
+                        points[i][0] += pos2[0]
+                        points[i][1] += pos2[1]
+                        points[i][2] += pos2[2]
                 self.polygons.append(
-                    Polygon(tuple(points),color="grey")
+                    Polygon(tuple(points),color="#d0d0d0")
                 )
 
         else:

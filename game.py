@@ -24,7 +24,7 @@ class Asteroid():
 
     
 class Game():
-    def __init__(self,root,canvas,cursor_scroll=False):
+    def __init__(self,root,canvas,settings={},cursor_scroll=False):
         # tkinter properties that are passed down
         self.root = root
         self.canvas = canvas
@@ -35,6 +35,7 @@ class Game():
         self.cursor_scroll = cursor_scroll
 
         ### BEGIN SETTINGS values ###
+        self.settings = settings
         self.fps_speed_adjustment = 4000
 
         # movement
@@ -296,10 +297,47 @@ class Game():
         # re load all the objects
         self.engine.render_objects()
 
+    def intro(self):
+
+        self.ship.x = -10
+        self.ship.z = 20
+        self.ship.rotx = 20*math.pi/180
+        self.ship.velocity_rot = False
+
+        title = self.canvas.create_text(WIDTH/2,30,text="Sanic Speed",font=("ansifixed",30),fill="white")
+        global done
+        done = False
+        def test():
+            global done
+            done = True
+        b = tkinter.Button(self.root, text="OK", command=test, width=30, height=2)
+        b.pack()
+        b.place(x=WIDTH/2 - 100,y =HEIGHT*0.75)
+
+        while not done:
+            self.ship.rotz_velocity = 0.1
+            self.update_pos()
+            self.update_objects()
+            self.render()
+
+            self.root.update()
+
+        # clear away intro screen stuff for gameplay
+        # reset ship
+        self.ship.rotz_velocity = 0
+        self.ship.rotz = 0
+        self.ship.roty = 0
+        self.ship.rotx = 0
+        # clear away widgets
+        b.destroy()
+        self.canvas.delete(title)
+        self.root.config(cursor='none')
+
     def run(self):
         t = time.clock()
         if self.cursor_scroll:
             win32api.SetCursorPos((int(WIDTH/2),int(HEIGHT/2)))
+        self.root.config(cursor='none')
 
         fps_text = self.canvas.create_text(10,10,text="",font="ansifixed",anchor="w",fill="white")
         zs = self.canvas.create_text(10,20,text="",font="ansifixed",anchor="w",fill="white")
@@ -307,7 +345,7 @@ class Game():
         rzs = self.canvas.create_text(10,40,text="",font="ansifixed",anchor="w",fill="white")
 
         while not self.stopped:
-            # update the keys that are downd
+            # update the keys that are down
             self.run_key_events()
             # move the camera/spaceship based on keys
             self.update_pos()
@@ -336,7 +374,7 @@ class Game():
 def setInitialValues():
     global g, WIDTH, HEIGHT
     fullscreen = True
-    cursor_scroll = True
+    cursor_scroll = False
 
     if cursor_scroll:
         global win32api
@@ -352,26 +390,22 @@ def setInitialValues():
                        width=WIDTH,
                        height=HEIGHT,
                        background="black",
-                       cursor="none",
                        bd=0,
                        highlightthickness=0,
                        relief="ridge"
     )
-    g = Game(root,s,cursor_scroll=cursor_scroll)
-
-    colors = ["blue","red","yellow","green"]
-    polys = []
-    for i in range(40):
-        z = i*300 + 60
-        polys.append(Polygon(((10,0,z),(100,40,z),(200,0,z)),colors[i%len(colors)]))
-    a = Asteroid(polys)
-    g.add_object(a)
+    settings = {
+        "audio" : False
+    }
+    g = Game(root,s,settings=settings,cursor_scroll=cursor_scroll)
     """
-    for i in range(40):
+    exponent = 1.4
+    for i in range(20):
         o = ObjectFile(
             "objects/tunnel.obj",
             scale=5,
-            pos=(20,0,i*80 + 100),
+            pos=(0,50*(i**exponent),i*200 + 100),
+            pos2=(0,50*(i+1)**exponent - 50*(i**exponent),0),
             fformat="tinkercad"
         )
         a = Asteroid(o.polygons)
@@ -380,6 +414,14 @@ def setInitialValues():
 
 def runGame():
     global g
+    g.intro()
+    colors = ["blue","red","yellow","green"]
+    polys = []
+    for i in range(40):
+        z = i*300 + 60
+        polys.append(Polygon(((10,0,z),(100,40,z),(200,0,z)),colors[i%len(colors)]))
+    a = Asteroid(polys)
+    g.add_object(a)
     g.run()
 
 setInitialValues()

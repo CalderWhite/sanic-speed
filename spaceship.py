@@ -21,8 +21,8 @@ class SpaceShip():
         self.rotz_velocity = 0
         self.roty_velocity = 0
 
-        self.deceleration = 0.9
-        self.acceleration = 1.75
+        self.deceleration = 0.95
+        self.acceleration = 1.65
 
         self.xdeceleration = 0.75
         self.xacceleration = 1.5
