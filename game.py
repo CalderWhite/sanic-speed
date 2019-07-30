@@ -7,10 +7,12 @@ import sys
 from graphics_objects import Line, Polygon, ObjectFile
 from graphics import Engine
 from spaceship import SpaceShip
+import keys
 
 # constants
 WIDTH = 600
 HEIGHT = 600
+KEYS = {}
 
 class Asteroid():
     def __init__(self,polygons):
@@ -37,7 +39,7 @@ class Game():
 
         ### BEGIN SETTINGS values ###
         self.settings = settings
-        self.fps_speed_adjustment = 4000
+        self.fps_speed_adjustment = 1
 
         # movement
         self.speed = 1
@@ -50,29 +52,29 @@ class Game():
         # key bindings / checking
         self.keys_down = []
         self.key_mapping = {
-            87 : self.forward, # w
-            83 : self.backward, # s
-            65 : self.left, # a
-            68 : self.right, # d
-            16 : self.down, # SHIFT
-            32 : self.up, # SPACE
-            27 : self.stop, # ESC
-            82 : self.reset, # r
-            37 : self.rot_left,
-            39 : self.rot_right,
-            38 : self.rot_up,
-            40: self.rot_down
+            KEYS["W"]:           self.forward,
+            KEYS["S"]:           self.backward,
+            KEYS["A"]:           self.left,
+            KEYS["D"]:           self.right,
+            KEYS["SHIFT"]:       self.down,
+            KEYS["SPACE"]:       self.up,
+            KEYS["ESC"]:         self.stop,
+            KEYS["R"]:           self.reset,
+            KEYS["LEFT_ARROW"]:  self.rot_left,
+            KEYS["RIGHT_ARROW"]: self.rot_right,
+            KEYS["UP_ARROW"]:    self.rot_up,
+            KEYS["DOWN_ARROW"]:  self.rot_down
         }
 
         # methods to be run once a key has stopped being pressed
         self.key_up_mapping = {
-            87 : self.kill_zvelocity,
-            83 : self.kill_zvelocity,
-            65 : self.kill_xvelocity,
-            68 : self.kill_xvelocity,
-            16 : self.kill_yvelocity,
-            32 : self.kill_yvelocity,
-            84 : self.toggle_noclip
+            KEYS["W"]:     self.kill_zvelocity,
+            KEYS["S"]:     self.kill_zvelocity,
+            KEYS["A"]:     self.kill_xvelocity,
+            KEYS["D"]:     self.kill_xvelocity,
+            KEYS["SHIFT"]: self.kill_yvelocity,
+            KEYS["SPACE"]: self.kill_yvelocity,
+            KEYS["T"]:     self.toggle_noclip
         }
 
         # rotation based on whether or not the mouse will be used
@@ -400,13 +402,20 @@ class Game():
             self.root.update()
 
 def setInitialValues():
-    global g, WIDTH, HEIGHT
-    fullscreen = True
+    global g, WIDTH, HEIGHT, KEYS
+    fullscreen = False
     cursor_scroll = False
 
     if cursor_scroll:
         global win32api
         import win32api
+
+    if "linux" in sys.platform:
+        KEYS = keys.LINUX_KEYS
+    else:
+        # this is the default. Sorry OS X users.
+        KEYS = keys.WINDOW_KEYS
+
     # create the tkinter window
     root = tkinter.Tk()
     if fullscreen:
@@ -437,7 +446,7 @@ def runGame():
         polys.append(Polygon(((10,0,z),(100,40,z),(200,0,z)),colors[i%len(colors)]))
     a = Asteroid(polys)
     g.add_object(a)
-    """
+
     exponent = 1.4
     for i in range(20):
         o = ObjectFile(
@@ -449,7 +458,6 @@ def runGame():
         )
         a = Asteroid(o.polygons)
         g.add_object(a)
-    """
     g.run()
 
 setInitialValues()
@@ -457,4 +465,3 @@ try:
     runGame()
 except SystemExit:
     pass
- 
